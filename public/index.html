@@ -41,19 +41,26 @@
           <span class="iconbtn-glyph" aria-hidden="true">⚙</span><span class="iconbtn-label">configure</span>
         </button>
         <div id="configure-panel" class="popover hidden" role="dialog" aria-label="Configure">
+          <div class="popover-title">Configure</div>
           <div class="popover-row">
             <span class="popover-label">Font size</span>
-            <div class="stepper">
-              <button class="stepper-btn" id="font-dec" aria-label="Decrease font size">−</button>
-              <span class="stepper-value" id="font-value">15</span>
-              <button class="stepper-btn" id="font-inc" aria-label="Increase font size">+</button>
+            <div class="segctl segctl-stepper">
+              <button class="segctl-btn" id="font-dec" aria-label="Decrease font size">−</button>
+              <span class="segctl-value" id="font-value">15</span>
+              <button class="segctl-btn" id="font-inc" aria-label="Increase font size">+</button>
             </div>
           </div>
           <div class="popover-row">
             <span class="popover-label">Cursor</span>
-            <div class="stepper">
-              <button class="mini-btn" id="cursor-style-btn" aria-label="Cycle cursor style">block</button>
-              <button class="mini-btn" id="cursor-blink-btn" aria-pressed="true" aria-label="Toggle cursor blink">blink</button>
+            <div class="popover-controls">
+              <div class="segctl" id="cursor-style-group" role="group" aria-label="Cursor style">
+                <button class="segctl-btn" data-cursor-style="block" aria-selected="true">block</button>
+                <button class="segctl-btn" data-cursor-style="underline" aria-selected="false">line</button>
+                <button class="segctl-btn" data-cursor-style="bar" aria-selected="false">bar</button>
+              </div>
+              <button class="toggle-switch" id="cursor-blink-btn" role="switch" aria-checked="true" title="Blink">
+                <span class="toggle-knob"></span>
+              </button>
             </div>
           </div>
           <div class="popover-row">

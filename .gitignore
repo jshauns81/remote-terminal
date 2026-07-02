@@ -1,3 +1,4 @@
 node_modules/
 .env
 ssh-keys/
+*-local-command-caveatcaveat-the-messages-below.txt

@@ -227,7 +227,7 @@
   // ── cursor style + blink ──────────────────────────────────────────────────
   try {
     const CURSOR_STYLES = ["block", "underline", "bar"];
-    const cursorStyleBtn = document.getElementById("cursor-style-btn");
+    const cursorStyleBtns = Array.from(document.querySelectorAll("#cursor-style-group .segctl-btn"));
     const cursorBlinkBtn = document.getElementById("cursor-blink-btn");
 
     let cursorStyle = localStorage.getItem("nexus-cursor-style");
@@ -238,24 +238,23 @@
     function applyCursorStyle(style) {
       cursorStyle = style;
       term.options.cursorStyle = style;
-      if (cursorStyleBtn) cursorStyleBtn.textContent = style;
+      cursorStyleBtns.forEach((btn) => {
+        btn.setAttribute("aria-selected", String(btn.dataset.cursorStyle === style));
+      });
       try { localStorage.setItem("nexus-cursor-style", style); } catch (_) {}
     }
     function applyCursorBlink(on) {
       cursorBlink = on;
       term.options.cursorBlink = on;
-      if (cursorBlinkBtn) cursorBlinkBtn.setAttribute("aria-pressed", String(on));
+      if (cursorBlinkBtn) cursorBlinkBtn.setAttribute("aria-checked", String(on));
       try { localStorage.setItem("nexus-cursor-blink", String(on)); } catch (_) {}
     }
     applyCursorStyle(cursorStyle);
     applyCursorBlink(cursorBlink);
 
-    if (cursorStyleBtn) {
-      cursorStyleBtn.addEventListener("click", () => {
-        const idx = CURSOR_STYLES.indexOf(cursorStyle);
-        applyCursorStyle(CURSOR_STYLES[(idx + 1) % CURSOR_STYLES.length]);
-      });
-    }
+    cursorStyleBtns.forEach((btn) => {
+      btn.addEventListener("click", () => applyCursorStyle(btn.dataset.cursorStyle));
+    });
     if (cursorBlinkBtn) cursorBlinkBtn.addEventListener("click", () => applyCursorBlink(!cursorBlink));
   } catch (err) { console.error("[nexus] cursor style setup failed:", err); }
 

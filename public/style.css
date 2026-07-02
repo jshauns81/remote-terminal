@@ -232,13 +232,21 @@ html, body {
 }
 
 /* ── configure popover ──────────────────────────────────────────────────── */
+/* A cohesive control surface: fixed row height + a fixed label column keep
+   every row's controls flush to the same right-hand edge, and every control
+   (segmented control, toggle, select) shares the same recessed-track /
+   raised-active-segment language the tab bar already established
+   (#tabs = track, .tab[aria-selected] = raised segment). */
 .configure-wrap { position: relative; margin-left: auto; }
 .popover {
   position: absolute;
   top: calc(100% + var(--s2));
   right: 0;
   z-index: 20;
-  min-width: 220px;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
   background: var(--ink-700);
   border: 1px solid var(--line);
   border-radius: var(--r2);
@@ -246,66 +254,83 @@ html, body {
   padding: var(--s4);
 }
 .popover.hidden { display: none; }
+.popover-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-lo);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--line);
+}
 .popover-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--s3);
+  min-height: 28px;
 }
-.popover-label { font-size: 13px; color: var(--text-mid); }
-.stepper {
+.popover-label { min-width: 100px; font-size: 13px; color: var(--text-mid); }
+.popover-controls { display: flex; align-items: center; gap: var(--s3); }
+
+/* segmented control (font-size stepper, cursor style) -- one level darker
+   than the popover surface so it reads as a recessed track, matching how
+   #tabs (ink-700) sits darker than #topbar; the active segment then raises
+   back up to ink-600, exactly mirroring .tab[aria-selected]. */
+.segctl {
   display: inline-flex;
   align-items: center;
-  gap: var(--s2);
-}
-.stepper-btn {
-  appearance: none;
-  width: 28px; height: 28px;
+  gap: 2px;
+  padding: 3px;
+  background: var(--ink-900);
   border: 1px solid var(--line);
   border-radius: var(--r1);
+}
+.segctl-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-mid);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: var(--s2) var(--s3);
+  border-radius: calc(var(--r1) - 3px);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, transform 0.04s ease;
+}
+.segctl-btn:hover { color: var(--text-hi); }
+.segctl-btn:active { transform: scale(0.94); }
+.segctl-btn:focus-visible { outline: none; box-shadow: var(--glow); }
+.segctl-btn[aria-selected="true"] {
   background: var(--ink-600);
   color: var(--text-hi);
-  font: inherit; font-size: 15px; line-height: 1;
-  cursor: pointer;
-  transition: background 0.12s ease, transform 0.04s ease;
+  box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.30);
 }
-.stepper-btn:hover { background: #16233c; }
-.stepper-btn:active { transform: scale(0.94); }
-.stepper-value {
-  min-width: 24px;
+.segctl-value {
+  min-width: 20px;
   text-align: center;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-hi);
   font-variant-numeric: tabular-nums;
 }
+.segctl-stepper .segctl-btn { width: 22px; text-align: center; padding: var(--s2) 0; }
 
-/* text-label pill buttons inside the popover (cursor style/blink) */
-.mini-btn {
-  appearance: none;
-  border: 1px solid var(--line);
-  border-radius: var(--r1);
-  background: var(--ink-600);
-  color: var(--text-mid);
-  font: inherit; font-size: 12px; line-height: 1;
-  padding: var(--s2) var(--s3);
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
-}
-.mini-btn:hover { background: #16233c; color: var(--text-hi); }
-.mini-btn[aria-pressed="true"] { background: var(--accent); color: #06131f; border-color: transparent; }
-
-/* on/off pill switch (extra keys, copy-on-select) */
+/* on/off pill switch (cursor blink, extra keys, copy-on-select) */
 .toggle-switch {
   appearance: none;
   width: 36px; height: 20px;
+  flex-shrink: 0;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: var(--ink-600);
+  background: var(--ink-900);
   position: relative;
   padding: 0;
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
+.toggle-switch:hover { border-color: rgba(148, 178, 224, 0.30); }
+.toggle-switch:focus-visible { outline: none; box-shadow: var(--glow); }
 .toggle-switch[aria-checked="true"] { background: var(--accent); border-color: transparent; }
 .toggle-knob {
   position: absolute;
@@ -317,17 +342,30 @@ html, body {
 }
 .toggle-switch[aria-checked="true"] .toggle-knob { transform: translateX(16px); background: #06131f; }
 
-/* dropdown (scrollback) */
+/* dropdown (scrollback) -- appearance:none + a hand-drawn chevron so it
+   matches the custom control language instead of falling back to native
+   OS select chrome, which would read as "thrown together" against everything
+   else here. */
 .select-input {
   appearance: none;
   border: 1px solid var(--line);
   border-radius: var(--r1);
-  background: var(--ink-600);
+  background-color: var(--ink-900);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-mid) 50%),
+    linear-gradient(135deg, var(--text-mid) 50%, transparent 50%);
+  background-position: right 12px top 55%, right 7px top 55%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
   color: var(--text-hi);
-  font: inherit; font-size: 13px;
-  padding: var(--s1) var(--s2);
+  font: inherit; font-size: 12px;
+  min-height: 28px;
+  padding: var(--s1) var(--s6) var(--s1) var(--s3);
   cursor: pointer;
+  transition: border-color 0.12s ease;
 }
+.select-input:hover { border-color: rgba(148, 178, 224, 0.30); }
+.select-input:focus-visible { outline: none; box-shadow: var(--glow); }
 
 /* ── connection status pill ─────────────────────────────────────────────── */
 .status {
