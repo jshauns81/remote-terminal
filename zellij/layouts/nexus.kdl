@@ -1,0 +1,39 @@
+// nexus workspace layout. `default_tab_template { children }` strips Zellij's
+// own tab-bar/status-bar plugins — the browser chrome provides those.
+//
+// Command panes reuse the same host dispatch as the previous app:
+//   claude   -> docker exec into the claude-helper container, launch claude,
+//               drop to a login shell on exit (so exiting the REPL is survivable)
+//   host     -> ssh with the dedicated key; the host forced-command dispatcher
+//               maps an empty command to a plain login shell (NEXUS_NO_TMUX=1,
+//               so .bash_extra skips its tmux auto-attach -- Zellij is the only
+//               multiplexer in this whole app now)
+//   opencode -> same key, "opencode" command -> dispatcher execs opencode
+//   llm      -> ssh (dedicated id_ed25519_llm key) straight to the LLM desktop
+//               (192.168.1.180, Windows/OpenSSH), which sleeps. The pane polls
+//               port 22 every 2s and prints elapsed wait time until it answers;
+//               the topbar "wake" button (llm tab only) sends the WoL magic
+//               packet that actually rouses it -- see server/index.js.
+layout {
+    default_tab_template {
+        children
+    }
+
+    tab name="claude" focus=true {
+        pane command="docker" { args "exec" "-it" "claude-helper" "bash" "-lc" "claude; exec bash -l"; }
+    }
+
+    tab name="host" {
+        pane command="ssh" { args "-tt" "-i" "/app/ssh-keys/id_ed25519" "-o" "StrictHostKeyChecking=accept-new" "-o" "UserKnownHostsFile=/tmp/known_hosts" "-o" "ServerAliveInterval=15" "-o" "ServerAliveCountMax=4" "root@192.168.10.2"; }
+    }
+
+    tab name="opencode" {
+        pane command="ssh" { args "-tt" "-i" "/app/ssh-keys/id_ed25519" "-o" "StrictHostKeyChecking=accept-new" "-o" "UserKnownHostsFile=/tmp/known_hosts" "-o" "ServerAliveInterval=15" "-o" "ServerAliveCountMax=4" "root@192.168.10.2" "opencode"; }
+    }
+
+    tab name="llm" {
+        pane command="bash" {
+            args "-c" "echo \"waiting for the LLM desktop (192.168.1.180)...\"; SECONDS=0; until timeout 2 bash -c \"echo > /dev/tcp/192.168.1.180/22\" 2>/dev/null; do echo \"connecting… (${SECONDS}s)\"; sleep 2; done; echo \"host is up — connecting\"; exec ssh -tt -i /app/ssh-keys/id_ed25519_llm -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/tmp/known_hosts_llm -o ServerAliveInterval=15 -o ServerAliveCountMax=4 jshau@192.168.1.180";
+        }
+    }
+}

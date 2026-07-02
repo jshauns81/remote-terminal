@@ -1,0 +1,19 @@
+services:
+  remote-terminal:
+    build: .
+    container_name: remote-terminal
+    restart: unless-stopped
+    environment:
+      - ZELLIJ_CONFIG_DIR=/app/zellij
+    volumes:
+      # Absolute host path on purpose: this compose file gets invoked via a
+      # sibling docker:cli container whose own cwd differs from the real host
+      # filesystem, so a relative './ssh-keys' resolves against the wrong root
+      # and silently bind-mounts an empty directory instead.
+      - /mnt/user/appdata/remote-terminal/ssh-keys:/app/ssh-keys:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Published on the host LAN so the Authentik embedded outpost (:9000, the
+    # real Cloudflare origin) can reach it; this port is never exposed to
+    # Cloudflare directly.
+    ports:
+      - "7681:7681"

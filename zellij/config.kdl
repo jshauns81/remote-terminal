@@ -1,0 +1,39 @@
+// Zellij config for the nexus web terminal. The browser chrome is the real UI,
+// so Zellij's own tab/status bars are stripped in the layout; this file sets
+// the theme, the tab-switch bridge keybinds, and quiet defaults.
+
+theme "nexus"
+themes {
+    nexus {
+        fg "#e8f2fd"
+        bg "#080d18"
+        black "#05080f"
+        red "#fb7185"
+        green "#34d399"
+        yellow "#fbbf24"
+        blue "#38bdf8"
+        magenta "#a78bfa"
+        cyan "#6ee7ff"
+        white "#e8f2fd"
+        orange "#fb923c"
+    }
+}
+
+default_layout "nexus"
+pane_frames false
+simplified_ui true
+show_startup_tips false
+show_release_notes false
+
+// Tab-switch bridge (Phase 0, Path B): the HTML tab bar writes these byte
+// sequences over the websocket and Zellij switches tab directly — no mode
+// flash. Bound in shared_except "locked" so `Ctrl g` (locked mode) is the
+// passthrough escape hatch if an app ever needs Alt+digit itself.
+keybinds {
+    shared_except "locked" {
+        bind "Alt 1" { GoToTab 1; }
+        bind "Alt 2" { GoToTab 2; }
+        bind "Alt 3" { GoToTab 3; }
+        bind "Alt 4" { GoToTab 4; }
+    }
+}

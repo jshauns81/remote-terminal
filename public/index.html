@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#05080f" />
+  <meta name="color-scheme" content="dark" />
+  <title>nexus</title>
+  <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <div class="brand" aria-label="nexus">
+        <span class="brand-dot"></span>
+        <span class="brand-name">nexus</span>
+      </div>
+
+      <nav id="tabs" role="tablist" aria-label="workspace tabs">
+        <button class="tab" role="tab" data-tab="1" data-name="claude" aria-selected="true">
+          <span class="tab-dot"></span><span class="tab-label">claude</span>
+        </button>
+        <button class="tab" role="tab" data-tab="2" data-name="host" aria-selected="false">
+          <span class="tab-dot"></span><span class="tab-label">host</span>
+        </button>
+        <button class="tab" role="tab" data-tab="3" data-name="opencode" aria-selected="false">
+          <span class="tab-dot"></span><span class="tab-label">opencode</span>
+        </button>
+        <button class="tab" role="tab" data-tab="4" data-name="llm" aria-selected="false">
+          <span class="tab-dot"></span><span class="tab-label">llm</span>
+        </button>
+      </nav>
+
+      <button id="wake" class="wake hidden" title="Send Wake-on-LAN to the LLM desktop">
+        <span class="wake-dot"></span><span class="wake-label">wake</span>
+      </button>
+
+      <div class="configure-wrap">
+        <button id="configure" class="iconbtn" title="Configure" aria-expanded="false">
+          <span class="iconbtn-glyph" aria-hidden="true">⚙</span><span class="iconbtn-label">configure</span>
+        </button>
+        <div id="configure-panel" class="popover hidden" role="dialog" aria-label="Configure">
+          <div class="popover-row">
+            <span class="popover-label">Font size</span>
+            <div class="stepper">
+              <button class="stepper-btn" id="font-dec" aria-label="Decrease font size">−</button>
+              <span class="stepper-value" id="font-value">15</span>
+              <button class="stepper-btn" id="font-inc" aria-label="Increase font size">+</button>
+            </div>
+          </div>
+          <div class="popover-row">
+            <span class="popover-label">Cursor</span>
+            <div class="stepper">
+              <button class="mini-btn" id="cursor-style-btn" aria-label="Cycle cursor style">block</button>
+              <button class="mini-btn" id="cursor-blink-btn" aria-pressed="true" aria-label="Toggle cursor blink">blink</button>
+            </div>
+          </div>
+          <div class="popover-row">
+            <span class="popover-label">Extra keys</span>
+            <button class="toggle-switch" id="extra-keys-toggle" role="switch" aria-checked="false">
+              <span class="toggle-knob"></span>
+            </button>
+          </div>
+          <div class="popover-row">
+            <span class="popover-label">Copy on select</span>
+            <button class="toggle-switch" id="copy-select-toggle" role="switch" aria-checked="true">
+              <span class="toggle-knob"></span>
+            </button>
+          </div>
+          <div class="popover-row">
+            <span class="popover-label">Scrollback</span>
+            <select class="select-input" id="scrollback-select">
+              <option value="1000">1,000</option>
+              <option value="5000">5,000</option>
+              <option value="10000">10,000</option>
+              <option value="50000">50,000</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <button id="logout" class="iconbtn" title="Sign out of nexus (terminals keep running)">
+        <span class="iconbtn-glyph" aria-hidden="true">⏻</span><span class="iconbtn-label">logout</span>
+      </button>
+
+      <div id="status" class="status" data-state="connecting" title="connection status">
+        <span class="status-dot"></span>
+        <span class="status-label">connecting</span>
+      </div>
+    </header>
+
+    <main id="stage">
+      <section id="frame" aria-label="terminal">
+        <div id="term"></div>
+        <div id="boot" class="boot" aria-hidden="true">
+          <div class="boot-inner">
+            <span class="boot-mark"></span>
+            <span class="boot-text">connecting to nexus</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer id="auxbar" aria-label="on-screen keys">
+      <div class="aux-group">
+        <button class="key" data-key="esc">esc</button>
+        <button class="key" data-key="tab">tab</button>
+      </div>
+      <span class="aux-sep" aria-hidden="true"></span>
+      <div class="aux-group">
+        <button class="key key-ctrl" data-key="ctrl" aria-pressed="false">ctrl</button>
+      </div>
+      <span class="aux-sep" aria-hidden="true"></span>
+      <div class="aux-group aux-arrows">
+        <button class="key" data-key="left">◀</button>
+        <button class="key" data-key="up">▲</button>
+        <button class="key" data-key="down">▼</button>
+        <button class="key" data-key="right">▶</button>
+      </div>
+      <span class="aux-sep" aria-hidden="true"></span>
+      <div class="aux-group aux-extra hidden" id="auxbar-extra">
+        <button class="key" data-key="home">home</button>
+        <button class="key" data-key="end">end</button>
+        <button class="key" data-key="pgup">pgup</button>
+        <button class="key" data-key="pgdn">pgdn</button>
+      </div>
+    </footer>
+  </div>
+
+  <script src="/vendor/xterm/xterm.js"></script>
+  <script src="/vendor/addon-fit/addon-fit.js"></script>
+  <script src="/vendor/addon-web-links/addon-web-links.js"></script>
+  <script src="/nexus.js"></script>
+</body>
+</html>
