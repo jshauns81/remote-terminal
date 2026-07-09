@@ -6,6 +6,18 @@
   <meta name="theme-color" content="#05080f" />
   <meta name="color-scheme" content="dark" />
   <title>nexus</title>
+
+  <!-- PWA: installable, standalone (no browser chrome), home-screen icon.
+       iOS ignores manifest.webmanifest pre-16.4 and Safari-in-standalone
+       still wants the apple-* tags explicitly, so both paths are covered. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="nexus" />
+  <meta name="mobile-web-app-capable" content="yes" />
+
   <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
   <link rel="stylesheet" href="/style.css" />
 </head>
@@ -100,6 +112,9 @@
     <main id="stage">
       <section id="frame" aria-label="terminal">
         <div id="term"></div>
+        <div id="scroll-track" class="scroll-track" aria-hidden="true">
+          <div id="scroll-thumb" class="scroll-thumb"></div>
+        </div>
         <div id="boot" class="boot" aria-hidden="true">
           <div class="boot-inner">
             <span class="boot-mark"></span>
@@ -139,5 +154,14 @@
   <script src="/vendor/addon-fit/addon-fit.js"></script>
   <script src="/vendor/addon-web-links/addon-web-links.js"></script>
   <script src="/nexus.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/service-worker.js").catch((err) => {
+          console.error("[nexus] service worker registration failed:", err);
+        });
+      });
+    }
+  </script>
 </body>
 </html>

@@ -2,6 +2,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const dgram = require("dgram");
+const { execFile } = require("child_process");
 const { WebSocketServer } = require("ws");
 const pty = require("node-pty");
 
@@ -15,6 +16,36 @@ const ZELLIJ_CONFIG_DIR = process.env.ZELLIJ_CONFIG_DIR || "/app/zellij";
 // session persistence, resize and DA — so there is no ring buffer, no token,
 // no per-tab dispatch, no session bookkeeping here anymore.
 const ZELLIJ_SESSION = process.env.ZELLIJ_SESSION || "nexus";
+
+// The tab bar is static HTML that always starts with "claude" highlighted --
+// on a hard refresh or an auto-reconnect, Zellij correctly repaints whatever
+// tab was actually focused (session state persists server-side), but nothing
+// told the browser which button that was, so the highlight stayed stuck on
+// "claude" even when e.g. "host" was the real, visible tab (found + root-caused
+// 2026-07-02). Fix: ask Zellij directly once the new pty attach is confirmed
+// live, and forward the answer to the client as a control message; the client
+// only updates the highlight from this, it never re-sends a tab-switch itself,
+// so this can't cause an unwanted tab change.
+//
+// Uses `list-tabs --state` (not `current-tab-info`): the latter resolves
+// against "the calling process's own client," and a one-shot `zellij action`
+// invocation from outside is never itself an attached client, so it always
+// errors "No active tab found for current client" even while a real browser
+// IS attached and focused (verified live, 2026-07-02). `list-tabs -s` reports
+// session-wide state instead, correctly showing which tab the real attached
+// client(s) have focused.
+function getActiveTabName() {
+  return new Promise((resolve) => {
+    execFile("zellij", ["--session", ZELLIJ_SESSION, "action", "list-tabs", "-s", "-j"], (err, stdout) => {
+      if (err) { resolve(null); return; }
+      try {
+        const tabs = JSON.parse(stdout);
+        const active = tabs.find((t) => t.active);
+        resolve(active ? active.name : null);
+      } catch (_) { resolve(null); }
+    });
+  });
+}
 
 // Wake-on-LAN for the "llm" tab's target desktop. Sent to a dedicated, unused
 // IP (192.168.1.100) that the gateway has a static ARP entry for pointing at
@@ -55,6 +86,9 @@ const MIME = {
   ".json": "application/json; charset=utf-8",
   ".woff2": "font/woff2",
   ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".webmanifest": "application/manifest+json",
 };
 
 const server = http.createServer((req, res) => {
@@ -140,6 +174,30 @@ wss.on("connection", (ws) => {
   });
   term.onExit(() => {
     if (ws.readyState === ws.OPEN) ws.close();
+  });
+
+  // Querying immediately on connect races the attach handshake -- the pty
+  // process exists but Zellij's server hasn't registered it as a client yet,
+  // so `list-tabs -s` reports no active tab at all (verified live). First
+  // pty data confirms the attach actually completed; a short retry chain
+  // covers any remaining lag between that and the server-side registration.
+  let activeTabQueryStarted = false;
+  function trySendActiveTab(attempt) {
+    if (ws.readyState !== ws.OPEN) return;
+    getActiveTabName().then((name) => {
+      if (ws.readyState !== ws.OPEN) return;
+      if (name) {
+        ws.send("\x00" + JSON.stringify({ type: "activeTab", name }));
+      } else if (attempt < 4) {
+        setTimeout(() => trySendActiveTab(attempt + 1), 200 * (attempt + 1));
+      }
+    });
+  }
+  term.onData(() => {
+    if (!activeTabQueryStarted) {
+      activeTabQueryStarted = true;
+      trySendActiveTab(0);
+    }
   });
 
   ws.on("message", (data, isBinary) => {

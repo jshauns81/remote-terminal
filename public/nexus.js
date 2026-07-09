@@ -76,6 +76,90 @@
     }
   }, 500);
 
+  // ── touch scroll: replay drag as a real wheel event ─────────────────────
+  // First attempt forwarded synthetic SGR mouse-wheel escape sequences
+  // (button 64/65) straight to the pty, on the theory that real wheel
+  // scroll must be reaching Zellij via mouse-report escapes. Wrong: the
+  // vendored xterm.js's actual wheel handler branches on
+  // `coreMouseService.areMouseEventsActive` (true here -- Zellij enables
+  // full mouse tracking for the whole session) into *arrow-key* escapes
+  // (ESC[A/ESC[B, or ESCOA/ESCOB under application-cursor-keys mode), not
+  // SGR mouse buttons at all (confirmed by reading the shipped bundle).
+  // Reimplementing that branching (plus every mode it depends on) ourselves
+  // would be fragile and version-specific. Instead, replay the same input
+  // xterm already handles correctly on desktop: dispatch a real synthetic
+  // WheelEvent on .xterm-screen from touch-drag deltas and let xterm's
+  // existing wheel handler do exactly what it does for a physical wheel.
+  try {
+    const termEl = document.getElementById("term");
+    const scrollTrack = document.getElementById("scroll-track");
+    const scrollThumb = document.getElementById("scroll-thumb");
+    const DRAG_THRESHOLD = 6; // px of movement before a touch counts as a scroll drag, not a tap
+
+    function dispatchWheel(deltaY, clientX, clientY) {
+      const target = termEl.querySelector(".xterm-screen") || termEl;
+      target.dispatchEvent(new WheelEvent("wheel", {
+        deltaY: deltaY, deltaMode: 0, clientX: clientX, clientY: clientY,
+        bubbles: true, cancelable: true,
+      }));
+    }
+
+    let hideTimer = null;
+    function showThumb(clientY) {
+      if (!scrollTrack) return;
+      scrollTrack.classList.add("show");
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => scrollTrack.classList.remove("show"), 900);
+      if (scrollThumb && typeof clientY === "number") {
+        const trackRect = scrollTrack.getBoundingClientRect();
+        const thumbH = 32;
+        let top = clientY - trackRect.top - thumbH / 2;
+        top = Math.max(0, Math.min(trackRect.height - thumbH, top));
+        scrollThumb.style.height = thumbH + "px";
+        scrollThumb.style.top = top + "px";
+      }
+    }
+
+    // Not a proportional scrollbar -- Zellij's own scroll depth isn't
+    // exposed to us over the wire, so the thumb is just a "you're
+    // dragging, here" position cue, not a claim about scrollback depth.
+    function bindDragScroll(el) {
+      let active = false, dragging = false, startX = 0, startY = 0, lastY = 0;
+      el.addEventListener("touchstart", (e) => {
+        if (e.touches.length !== 1) return;
+        active = true;
+        dragging = false;
+        startX = e.touches[0].clientX;
+        startY = lastY = e.touches[0].clientY;
+      }, { passive: true });
+      el.addEventListener("touchmove", (e) => {
+        if (!active || e.touches.length !== 1) return;
+        const t = e.touches[0];
+        if (!dragging) {
+          if (Math.abs(t.clientY - startY) < DRAG_THRESHOLD && Math.abs(t.clientX - startX) < DRAG_THRESHOLD) return;
+          dragging = true; // crossed the tap/drag threshold -- claim this gesture
+        }
+        e.preventDefault();
+        const fingerDelta = t.clientY - lastY;
+        lastY = t.clientY;
+        // finger moves down -> reveal earlier content -> same sign as wheel-up
+        dispatchWheel(-fingerDelta, t.clientX, t.clientY);
+        showThumb(t.clientY);
+      }, { passive: false });
+      el.addEventListener("touchend", () => { active = false; dragging = false; }, { passive: true });
+      el.addEventListener("touchcancel", () => { active = false; dragging = false; }, { passive: true });
+    }
+
+    bindDragScroll(termEl);
+    if (scrollTrack) bindDragScroll(scrollTrack);
+  } catch (err) { console.error("[nexus] touch scroll setup failed:", err); }
+
+  // Reassigned once the tab bar block below sets up; a no-op until then so
+  // an activeTab message arriving before that point can't throw. Only ever
+  // updates the highlight -- never sends a tab-switch, so a hard refresh or
+  // reconnect can't itself change which tab is focused server-side.
+  let syncActiveTab = () => {};
+
   // ── connection state ──────────────────────────────────────────────────────
   let ws = null;
   let reconnectDelay = 1000;
@@ -111,6 +195,13 @@
       if (!booted) {
         booted = true;
         boot.classList.add("hidden");
+      }
+      if (typeof ev.data === "string" && ev.data.charCodeAt(0) === 0) {
+        try {
+          const msg = JSON.parse(ev.data.slice(1));
+          if (msg.type === "activeTab") syncActiveTab(msg.name);
+        } catch (_) {}
+        return;
       }
       term.write(typeof ev.data === "string" ? ev.data : new Uint8Array(ev.data));
     };
@@ -155,13 +246,20 @@
     const tabs = Array.from(document.querySelectorAll(".tab"));
     const wakeBtn = document.getElementById("wake");
     const wakeLabel = wakeBtn && wakeBtn.querySelector(".wake-label");
-    function selectTab(btn) {
+    function highlightTab(btn) {
       tabs.forEach((t) => t.setAttribute("aria-selected", String(t === btn)));
       if (wakeBtn) wakeBtn.classList.toggle("hidden", btn.dataset.name !== "llm");
+    }
+    function selectTab(btn) {
+      highlightTab(btn);
       sendInput("\x1b" + btn.dataset.tab); // Alt+<n> = ESC + digit
       term.focus();
     }
     tabs.forEach((btn) => btn.addEventListener("click", () => selectTab(btn)));
+    syncActiveTab = (name) => {
+      const btn = tabs.find((t) => t.dataset.name === name);
+      if (btn) highlightTab(btn);
+    };
 
     // ── wake button: fires the WoL magic packet for the llm tab's desktop ──
     if (wakeBtn) {

@@ -420,9 +420,37 @@ html, body {
 #term { position: absolute; inset: var(--s4); }
 #term .xterm { height: 100%; }
 #term .xterm-viewport { background-color: transparent !important; }
-/* thin, tasteful scrollbar */
+/* thin, tasteful scrollbar (desktop only -- see .scroll-track below) */
 #term .xterm-viewport::-webkit-scrollbar { width: 8px; }
 #term .xterm-viewport::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
+
+/* Touch-visible scroll indicator ------------------------------------------
+ * ::-webkit-scrollbar styling above only paints on desktop browsers -- iOS
+ * and Android WebKit never let you style their native touch scroller, so on
+ * phone there was no visual indicator at all even though scrolling itself
+ * worked. This mirrors the xterm-viewport's own real scrollTop/scrollHeight
+ * (nexus.js) into a small thumb that fades in on scroll/drag and is itself a
+ * real touch target. Sits just inside #frame's padding, near #term's edge. */
+.scroll-track {
+  position: absolute;
+  top: var(--s4); bottom: var(--s4); right: 6px;
+  width: 5px;
+  z-index: 3;
+}
+.scroll-thumb {
+  position: absolute;
+  right: 0;
+  width: 5px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #6ee7ff, #a78bfa);
+  opacity: 0;
+  transition: opacity 0.2s ease, width 0.15s ease;
+}
+.scroll-track.show .scroll-thumb { opacity: 0.8; width: 7px; }
+.scroll-track.dragging .scroll-thumb { opacity: 1; width: 9px; }
+@media (prefers-reduced-motion: reduce) {
+  .scroll-thumb { transition: none; }
+}
 
 /* ── boot / connecting shimmer ──────────────────────────────────────────── */
 .boot {
@@ -514,4 +542,5 @@ html, body {
   .popover { right: auto; left: 0; }
   #frame { border-radius: var(--r2); padding: var(--s3); }
   #term { inset: var(--s3); }
+  .scroll-track { top: var(--s3); bottom: var(--s3); }
 }
