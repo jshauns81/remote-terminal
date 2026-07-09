@@ -42,9 +42,9 @@ runtime. Two categories:
 
 - [ ] T1.1 WebGL renderer with canvas fallback
 - [ ] T1.2 Commit `package-lock.json`, switch to `npm ci`
-- [ ] T1.3 PWA manifest + icons + apple meta + favicon
+- [x] T1.3 PWA manifest + icons + apple meta + favicon
 - [ ] T1.4 Origin allowlist on WS upgrade and `/api/wake`
-- [ ] T2.5 Tab-state desync (client bar reflects real Zellij tab)
+- [x] T2.5 Tab-state desync (client bar reflects real Zellij tab)
 - [ ] T2.6 Paste affordance + wider ctrl-combo coverage
 - [ ] T2.7 Docker `HEALTHCHECK` + `SIGTERM` graceful shutdown
 - [ ] T2.8 `immutable` caching for `/vendor/*`, keep `no-store` for HTML
