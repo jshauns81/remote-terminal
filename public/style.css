@@ -82,6 +82,14 @@ html, body {
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
+  /* iOS's soft keyboard shrinks window.visualViewport but does NOT shrink
+     100dvh (dvh only accounts for browser chrome show/hide, not the
+     keyboard) -- left as-is, the keyboard would simply overlay the bottom
+     of #app, burying #auxbar's ctrl/esc/arrow keys exactly when they're
+     most needed (mid-typing). nexus.js measures visualViewport.height on
+     load/resize/scroll and writes it here in real px; this wins whenever
+     it's set, with the dvh rule above as the pre-JS/no-JS fallback. */
+  height: var(--app-height, 100dvh);
 }
 
 /* ── header ─────────────────────────────────────────────────────────────── */
@@ -417,7 +425,17 @@ html, body {
   padding: var(--s4);
   overflow: hidden;
 }
-#term { position: absolute; inset: var(--s4); }
+#term {
+  position: absolute; inset: var(--s4);
+  /* Without this, iOS's native pan gesture and nexus.js's synthetic
+     touch-drag-to-wheel dispatch (see nexus.js) both try to handle the same
+     drag -- the browser's own attempt to pan a non-scrolling element shows
+     up as rubber-band bounce/jitter fighting the real scrollback motion.
+     `none` hands the whole gesture to JS, which is already relaying it to
+     xterm as wheel events. */
+  touch-action: none;
+  overscroll-behavior: contain;
+}
 #term .xterm { height: 100%; }
 #term .xterm-viewport { background-color: transparent !important; }
 /* thin, tasteful scrollbar (desktop only -- see .scroll-track below) */
@@ -436,6 +454,7 @@ html, body {
   top: var(--s4); bottom: var(--s4); right: 6px;
   width: 5px;
   z-index: 3;
+  touch-action: none; /* same rationale as #term above -- this is also a bindDragScroll() target */
 }
 .scroll-thumb {
   position: absolute;

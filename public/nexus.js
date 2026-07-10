@@ -62,7 +62,25 @@
   }
   new ResizeObserver(scheduleFit).observe(frame);
   window.addEventListener("resize", scheduleFit);
-  if (window.visualViewport) window.visualViewport.addEventListener("resize", scheduleFit);
+
+  // ── keyboard-aware height: iOS shrinks visualViewport for the soft
+  // keyboard but does NOT shrink 100dvh (dvh only tracks browser chrome,
+  // not the keyboard) -- so without this, the keyboard just overlays the
+  // bottom of #app, burying #auxbar's ctrl/esc/arrow keys exactly when
+  // they're needed mid-typing. Mirror the real visible height into a CSS
+  // var every time it changes; #app's `var(--app-height, 100dvh)` picks it
+  // up and the whole column (topbar/stage/auxbar) reflows to fit above the
+  // keyboard, then scheduleFit() re-measures the now-correct #frame size.
+  if (window.visualViewport) {
+    const vv = window.visualViewport;
+    function syncAppHeight() {
+      document.documentElement.style.setProperty("--app-height", vv.height + "px");
+      scheduleFit();
+    }
+    vv.addEventListener("resize", syncAppHeight);
+    vv.addEventListener("scroll", syncAppHeight); // keyboard show/hide also shifts vv's offset without always firing resize
+    syncAppHeight();
+  }
 
   // Belt-and-suspenders: poll the frame's own box size and re-fit if it
   // moved without a matching event ever reaching us (covers any other
