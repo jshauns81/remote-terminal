@@ -304,6 +304,64 @@
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(data);
   }
 
+  // ── image paste/drop → upload to the host inbox, type the path ───────────
+  // Cmd+V a screenshot (or drag an image file onto the page) and it uploads
+  // to /api/upload, which writes it into the claude-helper inbox bind-mount;
+  // the resulting path is then typed into the focused pane so whatever's
+  // running there (usually claude) can open it immediately. Text paste is
+  // untouched -- this only claims the event when an image file is present.
+  try {
+    const INBOX_HOST = "/mnt/user/appdata/claude-helper/inbox/";
+
+    function inboxPrefix() {
+      const active = document.querySelector('.tab[aria-selected="true"]');
+      // The claude tab lives inside the claude-helper container, where the
+      // host filesystem is mounted at /host; every other tab is a host-side
+      // shell (or close enough) that sees the native path.
+      return (active && active.dataset.name === "claude") ? "/host" + INBOX_HOST : INBOX_HOST;
+    }
+
+    async function uploadImage(file) {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "content-type": file.type },
+        body: file,
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.ok) throw new Error(j.error || ("upload failed: " + res.status));
+      sendInput(inboxPrefix() + j.file + " ");
+      term.focus();
+    }
+
+    function imageFromDataTransfer(dt) {
+      if (!dt) return null;
+      for (const item of dt.items || []) {
+        if (item.kind === "file" && item.type.startsWith("image/")) return item.getAsFile();
+      }
+      return null;
+    }
+
+    window.addEventListener("paste", (e) => {
+      if (document.body.classList.contains("web-active")) return; // claude.ai iframe owns its own paste
+      const file = imageFromDataTransfer(e.clipboardData);
+      if (!file) return; // plain text: leave it to xterm's normal paste path
+      e.preventDefault();
+      uploadImage(file).catch((err) => console.error("[nexus] image paste failed:", err));
+    });
+
+    window.addEventListener("dragover", (e) => {
+      if (document.body.classList.contains("web-active")) return;
+      if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files")) e.preventDefault();
+    });
+    window.addEventListener("drop", (e) => {
+      if (document.body.classList.contains("web-active")) return;
+      const file = imageFromDataTransfer(e.dataTransfer);
+      if (!file) return;
+      e.preventDefault();
+      uploadImage(file).catch((err) => console.error("[nexus] image drop failed:", err));
+    });
+  } catch (err) { console.error("[nexus] image inbox setup failed:", err); }
+
   // ── sticky ctrl: arms, then the next single keystroke becomes ctrl+key ────
   let ctrlArmed = false;
   const ctrlBtn = document.querySelector(".key-ctrl");

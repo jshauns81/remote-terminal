@@ -79,6 +79,54 @@ function sendWakePacket() {
   setTimeout(send, 300);
 }
 
+// Image drop-box: pasted/dropped screenshots land here (bind-mounted from
+// /mnt/user/appdata/claude-helper/inbox on the host, so both the claude tab
+// -- via /host/... -- and plain host shells can read them). Filenames are
+// generated server-side; the client never controls the path.
+const INBOX_DIR = process.env.INBOX_DIR || "/app/inbox";
+const UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+const IMAGE_EXT = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+};
+
+function handleUpload(req, res) {
+  const ext = IMAGE_EXT[(req.headers["content-type"] || "").split(";")[0].trim()];
+  if (!ext) {
+    res.writeHead(415, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: false, error: "only png/jpeg/gif/webp accepted" }));
+    return;
+  }
+  const chunks = [];
+  let size = 0;
+  req.on("data", (chunk) => {
+    size += chunk.length;
+    if (size > UPLOAD_MAX_BYTES) {
+      res.writeHead(413, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "too large" }));
+      req.destroy();
+      return;
+    }
+    chunks.push(chunk);
+  });
+  req.on("end", () => {
+    if (res.writableEnded) return;
+    const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..*/, "").replace("T", "-");
+    const name = `paste-${stamp}-${Math.random().toString(36).slice(2, 8)}${ext}`;
+    fs.writeFile(path.join(INBOX_DIR, name), Buffer.concat(chunks), (err) => {
+      if (err) {
+        res.writeHead(500, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: String(err) }));
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, file: name }));
+    });
+  });
+}
+
 const MIME = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -95,6 +143,10 @@ const server = http.createServer((req, res) => {
   if (req.url === "/healthz") {
     res.writeHead(200, { "content-type": "text/plain" });
     res.end("ok");
+    return;
+  }
+  if (req.url === "/api/upload" && req.method === "POST") {
+    handleUpload(req, res);
     return;
   }
   if (req.url === "/api/wake" && req.method === "POST") {

@@ -11,6 +11,9 @@ services:
       # filesystem, so a relative './ssh-keys' resolves against the wrong root
       # and silently bind-mounts an empty directory instead.
       - /mnt/user/appdata/remote-terminal/ssh-keys:/app/ssh-keys:ro
+      # Image drop-box: /api/upload writes pasted/dropped screenshots here;
+      # claude-helper sees the same dir at /host/mnt/user/appdata/claude-helper/inbox.
+      - /mnt/user/appdata/claude-helper/inbox:/app/inbox
       - /var/run/docker.sock:/var/run/docker.sock
     # Published on the host LAN so the Authentik embedded outpost (:9000, the
     # real Cloudflare origin) can reach it; this port is never exposed to
