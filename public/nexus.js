@@ -35,6 +35,11 @@
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.loadAddon(new WebLinksAddon.WebLinksAddon());
+  // OSC 52 -> navigator.clipboard. Zellij owns mouse selection (its tracking
+  // claims plain drags) and "copies" on release by emitting OSC 52 -- which
+  // xterm silently ignores without this addon, so Zellij would report
+  // "N chars sent to clipboard" while nothing ever landed in the real one.
+  term.loadAddon(new ClipboardAddon.ClipboardAddon());
 
   const frame = document.getElementById("frame");
   const boot = document.getElementById("boot");

@@ -26,11 +26,12 @@ COPY public ./public
 
 # Vendor the xterm.js dist files into public/vendor so the browser never loads
 # JS from a third-party CDN for an authenticated, root-shell-bearing app.
-RUN mkdir -p public/vendor/xterm public/vendor/addon-fit public/vendor/addon-web-links \
+RUN mkdir -p public/vendor/xterm public/vendor/addon-fit public/vendor/addon-web-links public/vendor/addon-clipboard \
     && cp node_modules/@xterm/xterm/css/xterm.css public/vendor/xterm/ \
     && cp node_modules/@xterm/xterm/lib/xterm.js public/vendor/xterm/ \
     && cp node_modules/@xterm/addon-fit/lib/addon-fit.js public/vendor/addon-fit/ \
-    && cp node_modules/@xterm/addon-web-links/lib/addon-web-links.js public/vendor/addon-web-links/
+    && cp node_modules/@xterm/addon-web-links/lib/addon-web-links.js public/vendor/addon-web-links/ \
+    && cp node_modules/@xterm/addon-clipboard/lib/addon-clipboard.js public/vendor/addon-clipboard/
 
 EXPOSE 7681
 CMD ["node", "server/index.js"]
