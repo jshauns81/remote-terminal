@@ -590,6 +590,31 @@ body.web-active #auxbar { display: none; }
   font-weight: 600;
 }
 
+/* ── upload toast: transient feedback for image paste/drop ──────────────── */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  transform: translateX(-50%) translateY(8px);
+  z-index: 30;
+  max-width: 84vw;
+  padding: var(--s2) var(--s4);
+  background: var(--ink-600);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: var(--e2);
+  color: var(--text-hi);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.err { border-color: rgba(251, 113, 133, 0.5); color: var(--err); }
+
 /* On touch devices the aux strip is primary: bigger targets, full width. */
 @media (pointer: coarse) {
   #auxbar { gap: var(--s2); }

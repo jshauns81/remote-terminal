@@ -321,16 +321,55 @@
       return (active && active.dataset.name === "claude") ? "/host" + INBOX_HOST : INBOX_HOST;
     }
 
+    // Transient feedback pill -- uploads used to fail silently (console only),
+    // which made "I pasted and nothing happened" undiagnosable from the UI.
+    let toastEl = null, toastTimer = null;
+    function toast(msg, ok) {
+      if (!toastEl) {
+        toastEl = document.createElement("div");
+        toastEl.className = "toast";
+        document.body.appendChild(toastEl);
+      }
+      toastEl.textContent = msg;
+      toastEl.classList.toggle("err", !ok);
+      toastEl.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove("show"), 2600);
+    }
+
+    // macOS screenshots (and some apps) can land in the clipboard as
+    // image/tiff or other formats the server rejects -- re-encode anything
+    // that isn't already an accepted type to PNG via canvas.
+    async function toPngBlob(file) {
+      if (/^image\/(png|jpeg|gif|webp)$/.test(file.type)) return file;
+      const bmp = await createImageBitmap(file);
+      const canvas = document.createElement("canvas");
+      canvas.width = bmp.width;
+      canvas.height = bmp.height;
+      canvas.getContext("2d").drawImage(bmp, 0, 0);
+      bmp.close();
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("could not convert " + (file.type || "unknown type") + " to png");
+      return blob;
+    }
+
     async function uploadImage(file) {
+      const body = await toPngBlob(file);
       const res = await fetch("/api/upload", {
         method: "POST",
-        headers: { "content-type": file.type },
-        body: file,
+        headers: { "content-type": body.type || "image/png" },
+        body: body,
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j.ok) throw new Error(j.error || ("upload failed: " + res.status));
       sendInput(inboxPrefix() + j.file + " ");
       term.focus();
+      toast("image uploaded → " + j.file, true);
+    }
+
+    function reportUploadError(err) {
+      console.error("[nexus] image upload failed:", err);
+      toast("image upload failed: " + (err && err.message ? err.message : err), false);
     }
 
     function imageFromDataTransfer(dt) {
@@ -343,10 +382,19 @@
 
     window.addEventListener("paste", (e) => {
       if (document.body.classList.contains("web-active")) return; // claude.ai iframe owns its own paste
-      const file = imageFromDataTransfer(e.clipboardData);
-      if (!file) return; // plain text: leave it to xterm's normal paste path
+      const dt = e.clipboardData;
+      const file = imageFromDataTransfer(dt);
+      if (!file) {
+        // Plain text: stay silent, xterm's normal paste path owns it. Anything
+        // else is a failed image-paste attempt -- say so, with what we saw,
+        // instead of doing nothing (undiagnosable from the UI otherwise).
+        const types = dt ? Array.from(dt.items || []).map((i) => i.kind + ":" + i.type) : [];
+        if (types.some((t) => t.startsWith("string:text/"))) return;
+        toast(types.length ? "no image in paste (got " + types.join(", ") + ")" : "clipboard is empty (screenshot to clipboard is ⌘⌃⇧ 4)", false);
+        return;
+      }
       e.preventDefault();
-      uploadImage(file).catch((err) => console.error("[nexus] image paste failed:", err));
+      uploadImage(file).catch(reportUploadError);
     });
 
     window.addEventListener("dragover", (e) => {
@@ -358,7 +406,7 @@
       const file = imageFromDataTransfer(e.dataTransfer);
       if (!file) return;
       e.preventDefault();
-      uploadImage(file).catch((err) => console.error("[nexus] image drop failed:", err));
+      uploadImage(file).catch(reportUploadError);
     });
   } catch (err) { console.error("[nexus] image inbox setup failed:", err); }
 
