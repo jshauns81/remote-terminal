@@ -140,38 +140,85 @@
       }
     }
 
+    // Every touch-drag over #term used to become a scroll, unconditionally --
+    // #term's `touch-action: none` (see style.css) hands the whole gesture to
+    // us, so there was no native fallback and no way to select text by touch
+    // at all. Fix: a held-still touch (LONG_PRESS_MS, no movement past
+    // DRAG_THRESHOLD) now arms selection mode instead of scroll -- from then
+    // on we replay the touch as synthetic mousedown/mousemove/mouseup on
+    // .xterm-screen, the same trick already used for wheel scroll above, so
+    // xterm's own real (mouse-driven) SelectionService does the actual work
+    // instead of us reimplementing selection.
+    const LONG_PRESS_MS = 400;
+
+    function dispatchMouse(type, x, y, buttons) {
+      const target = termEl.querySelector(".xterm-screen") || termEl;
+      target.dispatchEvent(new MouseEvent(type, {
+        clientX: x, clientY: y, button: 0, buttons: buttons,
+        bubbles: true, cancelable: true, composed: true,
+      }));
+    }
+
     // Not a proportional scrollbar -- Zellij's own scroll depth isn't
     // exposed to us over the wire, so the thumb is just a "you're
     // dragging, here" position cue, not a claim about scrollback depth.
-    function bindDragScroll(el) {
-      let active = false, dragging = false, startX = 0, startY = 0, lastY = 0;
+    function bindDragScroll(el, allowSelect) {
+      let active = false, dragging = false, selecting = false;
+      let startX = 0, startY = 0, lastX = 0, lastY = 0, longPressTimer = null;
       el.addEventListener("touchstart", (e) => {
         if (e.touches.length !== 1) return;
         active = true;
         dragging = false;
-        startX = e.touches[0].clientX;
+        selecting = false;
+        startX = lastX = e.touches[0].clientX;
         startY = lastY = e.touches[0].clientY;
+        if (allowSelect) {
+          const x = startX, y = startY;
+          longPressTimer = setTimeout(() => {
+            longPressTimer = null;
+            selecting = true;
+            dispatchMouse("mousedown", x, y, 1);
+          }, LONG_PRESS_MS);
+        }
       }, { passive: true });
       el.addEventListener("touchmove", (e) => {
         if (!active || e.touches.length !== 1) return;
         const t = e.touches[0];
+        if (selecting) {
+          e.preventDefault();
+          lastX = t.clientX; lastY = t.clientY;
+          dispatchMouse("mousemove", t.clientX, t.clientY, 1);
+          return;
+        }
         if (!dragging) {
           if (Math.abs(t.clientY - startY) < DRAG_THRESHOLD && Math.abs(t.clientX - startX) < DRAG_THRESHOLD) return;
+          // crossed the tap/drag threshold before the long-press timer fired
+          // -- this is a scroll, not a selection. Disarm the timer.
+          if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
           dragging = true; // crossed the tap/drag threshold -- claim this gesture
         }
         e.preventDefault();
         const fingerDelta = t.clientY - lastY;
-        lastY = t.clientY;
+        lastX = t.clientX; lastY = t.clientY;
         // finger moves down -> reveal earlier content -> same sign as wheel-up
         dispatchWheel(-fingerDelta, t.clientX, t.clientY);
         showThumb(t.clientY);
       }, { passive: false });
-      el.addEventListener("touchend", () => { active = false; dragging = false; }, { passive: true });
-      el.addEventListener("touchcancel", () => { active = false; dragging = false; }, { passive: true });
+      function release() {
+        active = false;
+        dragging = false;
+        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+        if (selecting) {
+          selecting = false;
+          dispatchMouse("mouseup", lastX, lastY, 0);
+        }
+      }
+      el.addEventListener("touchend", release, { passive: true });
+      el.addEventListener("touchcancel", release, { passive: true });
     }
 
-    bindDragScroll(termEl);
-    if (scrollTrack) bindDragScroll(scrollTrack);
+    bindDragScroll(termEl, true);
+    if (scrollTrack) bindDragScroll(scrollTrack, false);
   } catch (err) { console.error("[nexus] touch scroll setup failed:", err); }
 
   // Reassigned once the tab bar block below sets up; a no-op until then so
