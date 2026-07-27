@@ -24,6 +24,11 @@ pane_frames false
 simplified_ui true
 show_startup_tips false
 show_release_notes false
+// Off: its modifier+click "select this pane for a group action" gesture
+// competes with xterm's macOptionClickForcesSelection bypass for the exact
+// same click, so text selection could never win. Nothing else in nexus
+// uses pane grouping (every tab is a single full-pane), so this is free.
+advanced_mouse_actions false
 
 // Tab-switch bridge (Phase 0, Path B): the HTML tab bar writes these byte
 // sequences over the websocket and Zellij switches tab directly — no mode
