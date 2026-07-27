@@ -14,7 +14,9 @@
       foreground: "#e8f2fd",
       cursor: "#38bdf8",
       cursorAccent: "#080d18",
-      selectionBackground: "rgba(56,189,248,0.28)",
+      selectionBackground: "#e8f2fd",
+      selectionForeground: "#080d18",
+      selectionInactiveBackground: "rgba(232,242,253,0.25)",
       black: "#05080f", red: "#fb7185", green: "#34d399", yellow: "#fbbf24",
       blue: "#38bdf8", magenta: "#a78bfa", cyan: "#6ee7ff", white: "#e8f2fd",
       brightBlack: "#3b4a63", brightRed: "#fda4af", brightGreen: "#6ee7b7",
@@ -264,20 +266,84 @@
     const tabs = Array.from(document.querySelectorAll(".tab"));
     const wakeBtn = document.getElementById("wake");
     const wakeLabel = wakeBtn && wakeBtn.querySelector(".wake-label");
+    const webframe = document.getElementById("webframe");
+    const webview = document.getElementById("webview");
+
+    // True while a web tab (claude.ai iframe) is showing instead of the
+    // terminal. Kept as client-only state: the server has no idea this tab
+    // exists (it isn't a Zellij tab), so we must not let a server-driven
+    // activeTab sync yank the user off the web pane on reconnect.
+    let webActive = false;
+    let webLoaded = false;
+    let webUrl = null;
+
     function highlightTab(btn) {
       tabs.forEach((t) => t.setAttribute("aria-selected", String(t === btn)));
       if (wakeBtn) wakeBtn.classList.toggle("hidden", btn.dataset.name !== "llm");
     }
     function selectTab(btn) {
       highlightTab(btn);
+      if (btn.dataset.web) {
+        // Web pane: swap the terminal card for the iframe. Load src lazily on
+        // first open so the remote-browser stream doesn't start until used.
+        webActive = true;
+        document.body.classList.add("web-active");
+        webUrl = btn.dataset.web;
+        if (!webLoaded) { webview.src = webUrl; webLoaded = true; }
+        frame.classList.add("hidden");
+        webframe.classList.remove("hidden");
+        return; // no Alt+digit, no term.focus -- this isn't a Zellij tab
+      }
+      webActive = false;
+      document.body.classList.remove("web-active");
+      webframe.classList.add("hidden");
+      frame.classList.remove("hidden");
       sendInput("\x1b" + btn.dataset.tab); // Alt+<n> = ESC + digit
       term.focus();
+      scheduleFit();
     }
     tabs.forEach((btn) => btn.addEventListener("click", () => selectTab(btn)));
     syncActiveTab = (name) => {
+      // Ignore server tab-syncs while the user is on the web pane -- the
+      // underlying Zellij tab is untouched and re-syncs when they pick a
+      // terminal tab again.
+      if (webActive) return;
       const btn = tabs.find((t) => t.dataset.name === name);
       if (btn) highlightTab(btn);
     };
+
+    // ── web pane reload: reassigning src reloads the iframe, reconnecting the
+    // Selkies stream -- the fix for a stuck/frozen claude.ai view. Can't call
+    // contentWindow.reload() (cross-origin), so re-point src at the same URL. ─
+    const webreload = document.getElementById("webreload");
+    if (webreload) {
+      webreload.addEventListener("click", () => {
+        if (!webUrl) return;
+        webview.src = webUrl; // same value still triggers a fresh load
+        webreload.classList.remove("spinning");
+        void webreload.offsetWidth; // reflow so the animation can retrigger
+        webreload.classList.add("spinning");
+      });
+    }
+
+    // ── keyboard tab switch: Option/Alt+1..5 ────────────────────────────────
+    // Capture-phase on window so it fires before xterm's own key handler and
+    // we can stop the keystroke from reaching the terminal (on macOS Option+
+    // digit would otherwise type ¡™£¢∞; preventDefault below suppresses that).
+    // Keyed off physical e.code (Digit1..Digit5) so it's layout-independent.
+    // NOTE: while focus is inside the claude.ai iframe (cross-origin), its
+    // keystrokes never reach this listener -- so this switches away from a
+    // terminal tab reliably, but not from within the live claude.ai stream.
+    window.addEventListener("keydown", (e) => {
+      if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      const m = /^Digit([1-5])$/.exec(e.code);
+      if (!m) return;
+      const idx = parseInt(m[1], 10) - 1;
+      if (idx < 0 || idx >= tabs.length) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      selectTab(tabs[idx]);
+    }, true);
 
     // ── wake button: fires the WoL magic packet for the llm tab's desktop ──
     if (wakeBtn) {

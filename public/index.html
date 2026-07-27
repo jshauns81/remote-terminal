@@ -42,6 +42,12 @@
         <button class="tab" role="tab" data-tab="4" data-name="llm" aria-selected="false">
           <span class="tab-dot"></span><span class="tab-label">llm</span>
         </button>
+        <!-- Not a Zellij tab: no data-tab (Alt+digit). data-web marks it as a
+             web pane -- selecting it swaps the terminal for the iframe below
+             instead of switching a server-side Zellij tab. -->
+        <button class="tab" role="tab" data-name="claudeai" data-web="https://browser.simmserv.org" aria-selected="false">
+          <span class="tab-dot"></span><span class="tab-label">claude.ai</span>
+        </button>
       </nav>
 
       <button id="wake" class="wake hidden" title="Send Wake-on-LAN to the LLM desktop">
@@ -120,6 +126,26 @@
             <span class="boot-mark"></span>
             <span class="boot-text">connecting to nexus</span>
           </div>
+        </div>
+      </section>
+
+      <!-- claude.ai web pane: the containerized Chromium (browser.simmserv.org)
+           streamed in an iframe. Hidden until its tab is selected; src is set
+           lazily on first select so the remote-browser stream doesn't start
+           until it's actually opened. The pop-out link is the fallback path:
+           if the Cloudflare Access cookie has expired, the iframe would load
+           the frame-busted Access login (blank) -- opening it in a real tab
+           lets you re-auth, after which the iframe works again. -->
+      <section id="webframe" class="webframe hidden" aria-label="claude.ai">
+        <iframe id="webview" title="claude.ai"
+                allow="clipboard-read; clipboard-write; fullscreen; autoplay"
+                referrerpolicy="no-referrer"></iframe>
+        <div class="webctls">
+          <button id="webreload" class="webctl" type="button"
+                  title="Reload claude.ai (reconnect the stream)" aria-label="Reload claude.ai">⟳</button>
+          <a id="webpop" class="webctl" href="https://browser.simmserv.org"
+             target="_blank" rel="noopener"
+             title="Open claude.ai in a new browser tab" aria-label="Open in a new tab">↗</a>
         </div>
       </section>
     </main>
