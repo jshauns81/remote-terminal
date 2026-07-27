@@ -9,6 +9,13 @@
     fontSize: coarse ? 14 : 15,
     lineHeight: 1.15,
     letterSpacing: 0,
+    // Zellij keeps full mouse-tracking on for the whole session (see the
+    // touch-scroll comment below), which makes xterm forward every plain
+    // click/drag to Zellij instead of doing local selection -- its built-in
+    // bypass is Option-click on macOS, but only once this option is set
+    // (default false). Without it there was no key combo that could ever
+    // force local selection.
+    macOptionClickForcesSelection: true,
     theme: {
       background: "#080d18",
       foreground: "#e8f2fd",
@@ -155,6 +162,12 @@
       const target = termEl.querySelector(".xterm-screen") || termEl;
       target.dispatchEvent(new MouseEvent(type, {
         clientX: x, clientY: y, button: 0, buttons: buttons,
+        // Zellij's mouse-tracking otherwise swallows these as mouse-reports
+        // instead of a local selection -- altKey satisfies the macOS bypass
+        // (macOptionClickForcesSelection, set above), shiftKey satisfies the
+        // non-Mac bypass, and touch has no real modifier keys to hold, so
+        // both are forced on every synthetic event regardless of platform.
+        altKey: true, shiftKey: true,
         bubbles: true, cancelable: true, composed: true,
       }));
     }
