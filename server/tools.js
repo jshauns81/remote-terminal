@@ -42,14 +42,27 @@ const tools = {
     `${reapTagged("claude")}\n${resumeClaude}; exec bash -l`] },
   host: { command: "ssh", args: hostSsh },
   opencode: { command: "ssh", args: [...hostSsh, "opencode"] },
-  // Native Codex on the host (/usr/local/bin/codex, state in appdata/codex-native),
-  // started by the forced-command dispatcher like opencode. SSH_ORIGINAL_COMMAND
-  // must stay the literal string "codex" -- the dispatcher's case pattern
-  // matches it exactly, and anything else (e.g. appended flags) falls through
-  // to its default bash -l branch instead, which is what happened the first
-  // time this was tried. approval_policy/sandbox_mode live in codex's own
-  // config.toml instead (never-ask, still sandboxed -- see its comment there).
-  codex: { command: "ssh", args: [...hostSsh, "codex"] },
+  // 2026-10-05: moved off the bare host (SSH + dispatcher) into its own
+  // container, codex-terminal (appdata/codex-terminal) -- same recipe as
+  // claude-helper (gh/gk/python3/uv, /host + docker.sock mounted, same
+  // broad reach), with AGENTS.md as its CLAUDE.md equivalent. Needed
+  // because bubblewrap (its sandbox mechanism) can't run at all on bare
+  // Unraid: pivot_root fails, because Unraid's own root is RAM/tmpfs with
+  // no backing block device, not a config problem. approval_policy=never +
+  // sandbox_mode=danger-full-access live in its config.toml (shared with
+  // the old host install at codex-native/home, bind-mounted into the
+  // container) -- nothing to pass here.
+  // No reapTagged() here, deliberately: unlike claude, `codex`'s binary is a
+  // `#!/usr/bin/env node` script, so its process shows up as `node ...`, not
+  // `codex`, and it spawns its own long-lived background service children
+  // that inherit the same NEXUS_TOOL env tag -- a literal-match reaper would
+  // either never fire or, loosened, risk killing those legitimate children.
+  // The Maintenance panel already classifies codex sessions correctly
+  // (orphan/attached/service); use it to clear stale codex-terminal
+  // sessions instead of guessing a matcher here.
+  codex: { command: "docker", args: ["exec", "-it", "-e", "NEXUS_TOOL=codex",
+    "-e", "TERM=xterm-256color", "-e", "COLORTERM=truecolor", "codex-terminal", "bash", "-lc",
+    "exec codex"] },
   llm: { command: "ssh", args: [...sshOptions, "-i", "/app/ssh-keys/id_ed25519_llm",
     "-o", "UserKnownHostsFile=/tmp/known_hosts_llm", "jshau@192.168.1.176"] },
 };
