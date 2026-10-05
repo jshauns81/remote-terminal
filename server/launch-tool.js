@@ -29,6 +29,27 @@ function launch() {
     timer = setTimeout(launch, 5000);
   });
 }
+// Zellij builds a new session at the 80x24 placeholder size whenever the
+// first attach comes from a client that never reports its size (e.g. the
+// rebuild health check). A TUI started then (Claude, Codex, OpenCode) draws
+// at 80 columns, and when the real browser resizes the pane Zellij rewraps
+// that narrow output into a garbled double column. So the first launch waits
+// until something has given the pane a real size.
+function whenSized(start) {
+  const out = process.stdout;
+  const size = () => (out.isTTY && out.getWindowSize ? out.getWindowSize() : [0, 0]);
+  if (!out.isTTY || size().join("x") !== "80x24") return start();
+  console.log(`\r\n${name}: waiting for a browser to size the terminal…`);
+  // Poll the live window size: an event listener alone doesn't keep Node
+  // running, so the launcher would simply exit while "waiting".
+  const poll = setInterval(() => {
+    if (size().join("x") === "80x24") return;
+    clearInterval(poll);
+    process.stdout.write("\x1b[2J\x1b[H");
+    start();
+  }, 500);
+}
+
 // Ctrl+C belongs to the foreground application, not its recovery wrapper.
 process.on("SIGINT", () => {});
 for (const signal of ["SIGTERM", "SIGHUP"]) {
@@ -39,4 +60,4 @@ for (const signal of ["SIGTERM", "SIGHUP"]) {
     process.exit(0);
   });
 }
-launch();
+whenSized(launch);
