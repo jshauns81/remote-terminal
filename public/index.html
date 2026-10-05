@@ -29,24 +29,35 @@
         <span class="brand-name">nexus</span>
       </div>
 
-      <nav id="tabs" role="tablist" aria-label="workspace tabs">
-        <button class="tab" role="tab" data-tab="1" data-name="claude" aria-selected="true">
-          <span class="tab-dot"></span><span class="tab-label">claude</span>
+      <!-- Tabs grouped by product, one pill each. data-name is the stable id the
+           server and Zellij use; only the visible labels are Shaun's names.
+           data-web marks a web pane (iframe under /web/<name>/) instead of a
+           Zellij terminal tab. Option+1..7 follows this left-to-right order. -->
+      <nav id="tabs" class="tabgroup" role="tablist" aria-label="Claude">
+        <button class="tab" role="tab" data-name="claude" aria-selected="true">
+          <span class="tab-dot"></span><span class="tab-label">Claude Terminal</span>
         </button>
-        <button class="tab" role="tab" data-tab="2" data-name="host" aria-selected="false">
-          <span class="tab-dot"></span><span class="tab-label">host</span>
+        <button class="tab" role="tab" data-name="claudeai" data-web="/web/claudeai/" aria-selected="false">
+          <span class="tab-dot"></span><span class="tab-label">Claude.ai Web</span>
         </button>
-        <button class="tab" role="tab" data-tab="3" data-name="opencode" aria-selected="false">
-          <span class="tab-dot"></span><span class="tab-label">opencode</span>
+      </nav>
+      <nav class="tabgroup" role="tablist" aria-label="OpenAI">
+        <button class="tab" role="tab" data-name="codex" aria-selected="false">
+          <span class="tab-dot"></span><span class="tab-label">Codex Terminal</span>
         </button>
-        <button class="tab" role="tab" data-tab="4" data-name="llm" aria-selected="false">
-          <span class="tab-dot"></span><span class="tab-label">llm</span>
+        <button class="tab" role="tab" data-name="chatgpt" data-web="/web/chatgpt/" aria-selected="false">
+          <span class="tab-dot"></span><span class="tab-label">ChatGPT Web</span>
         </button>
-        <!-- Not a Zellij tab: no data-tab (Alt+digit). data-web marks it as a
-             web pane -- selecting it swaps the terminal for the iframe below
-             instead of switching a server-side Zellij tab. -->
-        <button class="tab" role="tab" data-name="claudeai" data-web="https://browser.simmserv.org" aria-selected="false">
-          <span class="tab-dot"></span><span class="tab-label">claude.ai</span>
+      </nav>
+      <nav class="tabgroup" role="tablist" aria-label="Homelab">
+        <button class="tab" role="tab" data-name="host" aria-selected="false">
+          <span class="tab-dot"></span><span class="tab-label">Unraid</span>
+        </button>
+        <button class="tab" role="tab" data-name="llm" aria-selected="false">
+          <span class="tab-dot"></span><span class="tab-label">BankBreak</span>
+        </button>
+        <button class="tab" role="tab" data-name="opencode" aria-selected="false">
+          <span class="tab-dot"></span><span class="tab-label">OpenCode</span>
         </button>
       </nav>
 
@@ -82,12 +93,6 @@
             </div>
           </div>
           <div class="popover-row">
-            <span class="popover-label">Extra keys</span>
-            <button class="toggle-switch" id="extra-keys-toggle" role="switch" aria-checked="false">
-              <span class="toggle-knob"></span>
-            </button>
-          </div>
-          <div class="popover-row">
             <span class="popover-label">Copy on select</span>
             <button class="toggle-switch" id="copy-select-toggle" role="switch" aria-checked="true">
               <span class="toggle-knob"></span>
@@ -102,6 +107,25 @@
               <option value="50000">50,000</option>
             </select>
           </div>
+          <!-- Recover: fix one stuck piece without disturbing the rest. -->
+          <div class="popover-title popover-subtitle">Recover</div>
+          <div class="recover-grid">
+            <button class="recover-btn" id="rec-reconnect" type="button"
+                    title="Drop and reopen this page's connection. Nothing on the server restarts.">
+              <span class="recover-name">Reconnect</span><span class="recover-hint">this device</span></button>
+            <button class="recover-btn" id="rec-tab" type="button"
+                    title="Restart the connection behind the current tab (ssh / docker exec, or the browser container).">
+              <span class="recover-name">Restart tab</span><span class="recover-hint" id="rec-tab-hint">current tab</span></button>
+            <button class="recover-btn" id="rec-bridge" type="button"
+                    title="Restart nexus's web server. Terminal sessions keep running; every device reconnects.">
+              <span class="recover-name">Restart bridge</span><span class="recover-hint">sessions kept</span></button>
+            <button class="recover-btn" id="rec-reload" type="button"
+                    title="Reload the app to pick up updates (the installed app keeps old code until reloaded).">
+              <span class="recover-name">Reload app</span><span class="recover-hint">fresh code</span></button>
+          </div>
+          <button class="recover-btn recover-wide" id="rec-maint" type="button"
+                  title="See every Claude / Codex / OpenCode session on the server -- which are in use, which are orphaned -- plus zombie processes.">
+            <span class="recover-name">Maintenance…</span><span class="recover-hint">sessions, orphans, zombies</span></button>
         </div>
       </div>
 
@@ -129,51 +153,58 @@
         </div>
       </section>
 
-      <!-- claude.ai web pane: the containerized Chromium (browser.simmserv.org)
-           streamed in an iframe. Hidden until its tab is selected; src is set
-           lazily on first select so the remote-browser stream doesn't start
-           until it's actually opened. The pop-out link is the fallback path:
-           if the Cloudflare Access cookie has expired, the iframe would load
-           the frame-busted Access login (blank) -- opening it in a real tab
-           lets you re-auth, after which the iframe works again. -->
-      <section id="webframe" class="webframe hidden" aria-label="claude.ai">
-        <iframe id="webview" title="claude.ai"
-                allow="clipboard-read; clipboard-write; fullscreen; autoplay"
-                referrerpolicy="no-referrer"></iframe>
+      <!-- Web pane: the containerized Chromium browsers (claude-browser,
+           chatgpt-browser) streamed in iframes, proxied under nexus's own
+           origin at /web/<name>/ (server/web-proxy.js) so the nexus login
+           covers them -- no second, frame-busted login. Hidden until a web tab
+           is selected; each iframe loads on first select. The pop-out opens
+           the current one in a full browser tab. -->
+      <section id="webframe" class="webframe hidden" aria-label="web view">
+        <!-- One iframe per web tab (claude.ai, chatgpt), created by nexus.js on
+             first select and kept alive after, so switching between them
+             doesn't drop either remote-browser stream. -->
+        <template id="webview-tpl">
+          <iframe class="webview"
+                  allow="clipboard-read; clipboard-write; fullscreen; autoplay"
+                  referrerpolicy="no-referrer"></iframe>
+        </template>
         <div class="webctls">
           <button id="webreload" class="webctl" type="button"
                   title="Reload claude.ai (reconnect the stream)" aria-label="Reload claude.ai">⟳</button>
-          <a id="webpop" class="webctl" href="https://browser.simmserv.org"
+          <a id="webpop" class="webctl" href="/web/claudeai/"
              target="_blank" rel="noopener"
              title="Open claude.ai in a new browser tab" aria-label="Open in a new tab">↗</a>
         </div>
       </section>
     </main>
 
-    <footer id="auxbar" aria-label="on-screen keys">
-      <div class="aux-group">
-        <button class="key" data-key="esc">esc</button>
-        <button class="key" data-key="tab">tab</button>
+    <!-- Maintenance panel: every tool session on the server, in use or
+         orphaned, plus zombies. Only orphaned sessions get a checkbox; the
+         server re-checks each one before killing and refuses anything nexus
+         or anything still attached. Filled by nexus.js from /api/maint/scan. -->
+    <div id="maint" class="maint hidden" role="dialog" aria-modal="true" aria-labelledby="maint-title">
+      <div class="maint-card">
+        <header class="maint-head">
+          <div>
+            <h2 id="maint-title">Maintenance</h2>
+            <p class="maint-sub" id="maint-sub">Scanning…</p>
+          </div>
+          <div class="maint-actions">
+            <button class="maint-btn" id="maint-refresh" type="button">Refresh</button>
+            <button class="maint-btn maint-danger" id="maint-kill" type="button" disabled>Kill selected</button>
+            <button class="maint-btn maint-x" id="maint-close" type="button" aria-label="Close">✕</button>
+          </div>
+        </header>
+        <div class="maint-legend">
+          <span class="chip chip-nexus">nexus</span> a nexus tab — never killable
+          <span class="chip chip-attached">in use</span> another live terminal
+          <span class="chip chip-service">service</span> background service
+          <span class="chip chip-orphan">orphaned</span> nothing attached — safe to kill
+        </div>
+        <div class="maint-body" id="maint-body"></div>
       </div>
-      <span class="aux-sep" aria-hidden="true"></span>
-      <div class="aux-group">
-        <button class="key key-ctrl" data-key="ctrl" aria-pressed="false">ctrl</button>
-      </div>
-      <span class="aux-sep" aria-hidden="true"></span>
-      <div class="aux-group aux-arrows">
-        <button class="key" data-key="left">◀</button>
-        <button class="key" data-key="up">▲</button>
-        <button class="key" data-key="down">▼</button>
-        <button class="key" data-key="right">▶</button>
-      </div>
-      <span class="aux-sep" aria-hidden="true"></span>
-      <div class="aux-group aux-extra hidden" id="auxbar-extra">
-        <button class="key" data-key="home">home</button>
-        <button class="key" data-key="end">end</button>
-        <button class="key" data-key="pgup">pgup</button>
-        <button class="key" data-key="pgdn">pgdn</button>
-      </div>
-    </footer>
+    </div>
+
   </div>
 
   <script src="/vendor/xterm/xterm.js"></script>

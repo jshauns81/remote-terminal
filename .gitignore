@@ -2,3 +2,8 @@ node_modules/
 .env
 ssh-keys/
 *-local-command-caveatcaveat-the-messages-below.txt
+# Local safety copies made during maintenance -- not source.
+.backups/
+.repair-*/
+*.bak-*
+*.before-*

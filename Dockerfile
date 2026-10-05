@@ -33,5 +33,7 @@ RUN mkdir -p public/vendor/xterm public/vendor/addon-fit public/vendor/addon-web
     && cp node_modules/@xterm/addon-web-links/lib/addon-web-links.js public/vendor/addon-web-links/ \
     && cp node_modules/@xterm/addon-clipboard/lib/addon-clipboard.js public/vendor/addon-clipboard/
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD ["node", "/app/server/healthcheck.js"]
+
 EXPOSE 7681
-CMD ["node", "server/index.js"]
+CMD ["node", "server/supervise.js"]

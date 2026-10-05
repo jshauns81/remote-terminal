@@ -18,5 +18,8 @@ services:
     # Published on the host LAN so the Authentik embedded outpost (:9000, the
     # real Cloudflare origin) can reach it; this port is never exposed to
     # Cloudflare directly.
+    # Default bridge: this host's Docker address pools are exhausted, so the
+    # old per-project network could not be recreated after a `compose down`.
+    network_mode: bridge
     ports:
       - "7681:7681"

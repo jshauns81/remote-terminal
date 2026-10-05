@@ -2,50 +2,23 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const dgram = require("dgram");
-const { execFile } = require("child_process");
 const { WebSocketServer } = require("ws");
 const pty = require("node-pty");
+const { renderLayout } = require("./tools");
+const createToolTabs = require("./tool-tabs");
+const webProxy = require("./web-proxy");
+const recover = require("./recover");
+const maint = require("./maint");
 
 const PORT = process.env.PORT || 7681;
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 const ZELLIJ_CONFIG_DIR = process.env.ZELLIJ_CONFIG_DIR || "/app/zellij";
 
-// The terminal experience is now a single persistent Zellij session. This node
-// layer is a dumb pipe: it serves the static SPA and bridges each websocket to
-// one `zellij attach` pty. Zellij owns multiplexing, panes, tabs, scrollback,
-// session persistence, resize and DA — so there is no ring buffer, no token,
-// no per-tab dispatch, no session bookkeeping here anymore.
+// Zellij owns terminal persistence; the bridge restores missing tools and
+// selects them by name so closed/reordered tabs cannot break the toolbar.
 const ZELLIJ_SESSION = process.env.ZELLIJ_SESSION || "nexus";
-
-// The tab bar is static HTML that always starts with "claude" highlighted --
-// on a hard refresh or an auto-reconnect, Zellij correctly repaints whatever
-// tab was actually focused (session state persists server-side), but nothing
-// told the browser which button that was, so the highlight stayed stuck on
-// "claude" even when e.g. "host" was the real, visible tab (found + root-caused
-// 2026-07-02). Fix: ask Zellij directly once the new pty attach is confirmed
-// live, and forward the answer to the client as a control message; the client
-// only updates the highlight from this, it never re-sends a tab-switch itself,
-// so this can't cause an unwanted tab change.
-//
-// Uses `list-tabs --state` (not `current-tab-info`): the latter resolves
-// against "the calling process's own client," and a one-shot `zellij action`
-// invocation from outside is never itself an attached client, so it always
-// errors "No active tab found for current client" even while a real browser
-// IS attached and focused (verified live, 2026-07-02). `list-tabs -s` reports
-// session-wide state instead, correctly showing which tab the real attached
-// client(s) have focused.
-function getActiveTabName() {
-  return new Promise((resolve) => {
-    execFile("zellij", ["--session", ZELLIJ_SESSION, "action", "list-tabs", "-s", "-j"], (err, stdout) => {
-      if (err) { resolve(null); return; }
-      try {
-        const tabs = JSON.parse(stdout);
-        const active = tabs.find((t) => t.active);
-        resolve(active ? active.name : null);
-      } catch (_) { resolve(null); }
-    });
-  });
-}
+const toolTabs = createToolTabs(ZELLIJ_SESSION);
+fs.writeFileSync(path.join(ZELLIJ_CONFIG_DIR, "layouts", "nexus.kdl"), renderLayout());
 
 // Wake-on-LAN for the "llm" tab's target desktop. Sent to a dedicated, unused
 // IP (192.168.1.100) that the gateway has a static ARP entry for pointing at
@@ -160,6 +133,12 @@ const server = http.createServer((req, res) => {
     }
     return;
   }
+  if (req.url === "/api/recover" && req.method === "POST") {
+    recover.handle(req, res, toolTabs);
+    return;
+  }
+  if (req.url.startsWith("/api/maint/") && maint.handle(req, res)) return;
+  if (webProxy.handleRequest(req, res)) return;
   const reqPath = req.url === "/" ? "/index.html" : req.url.split("?")[0];
   const filePath = path.join(PUBLIC_DIR, path.normalize(reqPath).replace(/^(\.\.[/\\])+/, ""));
   fs.readFile(filePath, (err, data) => {
@@ -213,13 +192,20 @@ wss.on("connection", (ws) => {
   // with no content, no error, indistinguishable from a healthy empty shell
   // until you actually look inside it. `-f` forces pane commands to run
   // again on resurrection, matching genuinely-fresh-session behavior.
-  const term = pty.spawn("zellij", ["attach", "-c", "-f", ZELLIJ_SESSION], {
-    name: "xterm-256color",
-    cols: 80,
-    rows: 24,
-    cwd: process.env.HOME || "/root",
-    env: { ...process.env, ZELLIJ_CONFIG_DIR },
-  });
+  let term;
+  try {
+    term = pty.spawn("zellij", ["attach", "-c", "-f", ZELLIJ_SESSION], {
+      name: "xterm-256color",
+      cols: 80,
+      rows: 24,
+      cwd: process.env.HOME || "/root",
+      env: { ...process.env, SHELL: process.env.SHELL || "/bin/bash", ZELLIJ_CONFIG_DIR },
+    });
+  } catch (err) {
+    console.error("Nexus terminal attach failed:", err.message);
+    ws.close(1011, "Terminal unavailable; reconnecting");
+    return;
+  }
 
   term.onData((d) => {
     if (ws.readyState === ws.OPEN) ws.send(d);
@@ -234,21 +220,32 @@ wss.on("connection", (ws) => {
   // pty data confirms the attach actually completed; a short retry chain
   // covers any remaining lag between that and the server-side registration.
   let activeTabQueryStarted = false;
-  function trySendActiveTab(attempt) {
+  let readyResolve;
+  const ready = new Promise((resolve) => { readyResolve = resolve; });
+  function sendControl(message) {
+    if (ws.readyState === ws.OPEN) ws.send("\x00" + JSON.stringify(message));
+  }
+  async function restoreTools(attempt) {
     if (ws.readyState !== ws.OPEN) return;
-    getActiveTabName().then((name) => {
-      if (ws.readyState !== ws.OPEN) return;
-      if (name) {
-        ws.send("\x00" + JSON.stringify({ type: "activeTab", name }));
-      } else if (attempt < 4) {
-        setTimeout(() => trySendActiveTab(attempt + 1), 200 * (attempt + 1));
+    try {
+      const name = await toolTabs.restore();
+      readyResolve(true);
+      sendControl({ type: "activeTab", name });
+    } catch (err) {
+      if (attempt < 7) {
+        setTimeout(() => restoreTools(attempt + 1), Math.min(1000, 200 * (attempt + 1)));
+      } else {
+        console.error("Nexus tool recovery failed:", err.message);
+        readyResolve(false);
+        sendControl({ type: "toolError", message: "Tool recovery failed; reconnecting" });
+        ws.close(1011, "Tool recovery failed");
       }
-    });
+    }
   }
   term.onData(() => {
     if (!activeTabQueryStarted) {
       activeTabQueryStarted = true;
-      trySendActiveTab(0);
+      restoreTools(0);
     }
   });
 
@@ -258,7 +255,24 @@ wss.on("connection", (ws) => {
       if (text.startsWith("\x00")) {
         try {
           const msg = JSON.parse(text.slice(1));
+          // App-level liveness probe: the client pings on an interval and on
+          // wake/network change, and reconnects if no reply arrives. Browsers
+          // can't see protocol-level pings, and a half-open socket after sleep
+          // otherwise looks alive while keystrokes go nowhere.
+          if (msg.type === "ping") sendControl({ type: "pong" });
           if (msg.type === "resize") term.resize(msg.cols, msg.rows);
+          if (msg.type === "selectTool") {
+            ready.then(async (ok) => {
+              if (!ok || ws.readyState !== ws.OPEN) return;
+              try {
+                const name = await toolTabs.select(msg.name);
+                sendControl({ type: "activeTab", name });
+              } catch (err) {
+                console.error("Nexus tool selection failed:", err.message);
+                sendControl({ type: "toolError", message: "Tool unavailable; select it to retry" });
+              }
+            });
+          }
         } catch (_) {}
         return;
       }
@@ -269,6 +283,7 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
+    readyResolve(false);
     try {
       term.kill();
     } catch (_) {}
@@ -276,6 +291,7 @@ wss.on("connection", (ws) => {
 });
 
 server.on("upgrade", (req, socket, head) => {
+  if (webProxy.handleUpgrade(req, socket, head)) return;
   if (!req.url || !req.url.startsWith("/ws")) {
     socket.destroy();
     return;

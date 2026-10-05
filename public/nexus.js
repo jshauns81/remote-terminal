@@ -16,19 +16,22 @@
     // (default false). Without it there was no key combo that could ever
     // force local selection.
     macOptionClickForcesSelection: true,
+    // Tokyo Night (night). Keep selection/background in step with the Zellij
+    // theme in zellij/config.kdl -- Zellij draws its own mouse selection
+    // (text_selected); this selectionBackground covers Option-drag selection.
     theme: {
-      background: "#080d18",
-      foreground: "#e8f2fd",
-      cursor: "#38bdf8",
-      cursorAccent: "#080d18",
-      selectionBackground: "#e8f2fd",
-      selectionForeground: "#080d18",
-      selectionInactiveBackground: "rgba(232,242,253,0.25)",
-      black: "#05080f", red: "#fb7185", green: "#34d399", yellow: "#fbbf24",
-      blue: "#38bdf8", magenta: "#a78bfa", cyan: "#6ee7ff", white: "#e8f2fd",
-      brightBlack: "#3b4a63", brightRed: "#fda4af", brightGreen: "#6ee7b7",
-      brightYellow: "#fde68a", brightBlue: "#7dd3fc", brightMagenta: "#c4b5fd",
-      brightCyan: "#a5f3fc", brightWhite: "#ffffff",
+      background: "#1a1b26",
+      foreground: "#c0caf5",
+      cursor: "#c0caf5",
+      cursorAccent: "#1a1b26",
+      selectionBackground: "#33467c",
+      selectionForeground: "#c0caf5",
+      selectionInactiveBackground: "#283457",
+      black: "#15161e", red: "#f7768e", green: "#9ece6a", yellow: "#e0af68",
+      blue: "#7aa2f7", magenta: "#bb9af7", cyan: "#7dcfff", white: "#a9b1d6",
+      brightBlack: "#414868", brightRed: "#ff899d", brightGreen: "#9fe044",
+      brightYellow: "#faba4a", brightBlue: "#8db0ff", brightMagenta: "#c7a9ff",
+      brightCyan: "#a4daff", brightWhite: "#c0caf5",
     },
   });
 
@@ -80,10 +83,10 @@
   // ── keyboard-aware height: iOS shrinks visualViewport for the soft
   // keyboard but does NOT shrink 100dvh (dvh only tracks browser chrome,
   // not the keyboard) -- so without this, the keyboard just overlays the
-  // bottom of #app, burying #auxbar's ctrl/esc/arrow keys exactly when
-  // they're needed mid-typing. Mirror the real visible height into a CSS
+  // bottom of #app, burying the bottom of the terminal exactly when it's
+  // needed mid-typing. Mirror the real visible height into a CSS
   // var every time it changes; #app's `var(--app-height, 100dvh)` picks it
-  // up and the whole column (topbar/stage/auxbar) reflows to fit above the
+  // up and the whole column (topbar/stage) reflows to fit above the
   // keyboard, then scheduleFit() re-measures the now-correct #frame size.
   if (window.visualViewport) {
     const vv = window.visualViewport;
@@ -250,6 +253,7 @@
   let reconnectDelay = 1000;
   let reconnectTimer = null;
   let booted = false;
+  let lastRx = 0; // time of the last frame of any kind from the server
 
   function setStatus(state, label) {
     statusEl.dataset.state = state;
@@ -267,16 +271,22 @@
     if (isReconnect) term.reset();
     setStatus("connecting", isReconnect ? "reconnecting" : "connecting");
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    ws = new WebSocket(proto + "//" + location.host + "/ws");
-
-    ws.onopen = () => {
+    const sock = new WebSocket(proto + "//" + location.host + "/ws");
+    ws = sock;
+    // Every handler ignores events from a socket that has been replaced, so
+    // a late close from an abandoned socket can't schedule a second connect.
+    sock.onopen = () => {
+      if (ws !== sock) return;
+      lastRx = Date.now();
       reconnectDelay = 1000;
       setStatus("connected", "connected");
       scheduleFit();
       sendResize();
     };
 
-    ws.onmessage = (ev) => {
+    sock.onmessage = (ev) => {
+      if (ws !== sock) return;
+      lastRx = Date.now();
       if (!booted) {
         booted = true;
         boot.classList.add("hidden");
@@ -284,21 +294,69 @@
       if (typeof ev.data === "string" && ev.data.charCodeAt(0) === 0) {
         try {
           const msg = JSON.parse(ev.data.slice(1));
-          if (msg.type === "activeTab") syncActiveTab(msg.name);
+          if (msg.type === "pong") return;
+          if (msg.type === "activeTab") {
+            syncActiveTab(msg.name);
+            setStatus("connected", "connected");
+          }
+          if (msg.type === "toolError") setStatus("error", msg.message);
         } catch (_) {}
         return;
       }
       term.write(typeof ev.data === "string" ? ev.data : new Uint8Array(ev.data));
     };
 
-    ws.onclose = () => {
+    sock.onclose = () => {
+      if (ws !== sock) return;
       setStatus("reconnecting", "reconnecting");
       clearTimeout(reconnectTimer);
       reconnectTimer = setTimeout(() => connect(true), reconnectDelay);
       reconnectDelay = Math.min(reconnectDelay * 2, 5000);
     };
-    ws.onerror = () => { try { ws.close(); } catch (_) {} };
+    sock.onerror = () => { try { sock.close(); } catch (_) {} };
   }
+
+  // Drop the current socket (even one the browser still thinks is open) and
+  // connect again right away, skipping the backoff.
+  function forceReconnect() {
+    const old = ws;
+    ws = null;
+    if (old) { try { old.close(); } catch (_) {} }
+    clearTimeout(reconnectTimer);
+    reconnectDelay = 1000;
+    connect(true);
+  }
+
+  // ── liveness: a socket can be dead without the browser noticing for
+  // minutes (device slept, Wi-Fi/VPN/cell switch), leaving a prompt that
+  // looks alive but swallows keystrokes. Ping while visible; the server
+  // answers with a pong, so silence past LIVENESS_MS means the link is dead. ─
+  const PING_MS = 10000;
+  const LIVENESS_MS = 30000;
+  function ping() {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send("\x00" + JSON.stringify({ type: "ping" }));
+  }
+  setInterval(() => {
+    if (document.hidden || !ws || ws.readyState !== WebSocket.OPEN) return;
+    if (Date.now() - lastRx > LIVENESS_MS) { forceReconnect(); return; }
+    ping();
+  }, PING_MS);
+
+  // On wake / network change / return from bfcache: don't wait for the next
+  // interval -- probe now and reconnect if no reply comes back within 3s.
+  function checkNow() {
+    if (!ws || ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED) {
+      forceReconnect();
+      return;
+    }
+    if (ws.readyState !== WebSocket.OPEN) return; // still connecting
+    const sent = Date.now();
+    ping();
+    setTimeout(() => { if (lastRx < sent) forceReconnect(); }, 3000);
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) checkNow(); });
+  window.addEventListener("online", checkNow);
+  window.addEventListener("pageshow", (e) => { if (e.persisted) checkNow(); });
 
   function sendInput(data) {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(data);
@@ -410,24 +468,9 @@
     });
   } catch (err) { console.error("[nexus] image inbox setup failed:", err); }
 
-  // ── sticky ctrl: arms, then the next single keystroke becomes ctrl+key ────
-  let ctrlArmed = false;
-  const ctrlBtn = document.querySelector(".key-ctrl");
-  function setCtrl(on) {
-    ctrlArmed = on;
-    ctrlBtn.setAttribute("aria-pressed", String(on));
-  }
+  term.onData((d) => sendInput(d));
 
-  term.onData((d) => {
-    if (ctrlArmed && d.length === 1) {
-      const c = d.charCodeAt(0);
-      if (c >= 0x20 && c < 0x7f) d = String.fromCharCode(c & 0x1f); // a->\x01 … c->\x03
-      setCtrl(false);
-    }
-    sendInput(d);
-  });
-
-  // ── tab bar → drive Zellij tabs via Alt+digit bytes (Phase 0, Path B) ─────
+  // ── tab bar → select tools by name, restoring missing tabs server-side ──
   // Wrapped defensively: this whole block sits between the resize/connect
   // setup above and the final connect() call below, so any DOM mismatch here
   // (e.g. markup/script version skew) must never throw past this block and
@@ -438,38 +481,56 @@
     const wakeBtn = document.getElementById("wake");
     const wakeLabel = wakeBtn && wakeBtn.querySelector(".wake-label");
     const webframe = document.getElementById("webframe");
-    const webview = document.getElementById("webview");
+    const webviewTpl = document.getElementById("webview-tpl");
+    const webpop = document.getElementById("webpop");
 
-    // True while a web tab (claude.ai iframe) is showing instead of the
+    // True while a web tab (claude.ai / chatgpt iframe) is showing instead of the
     // terminal. Kept as client-only state: the server has no idea this tab
     // exists (it isn't a Zellij tab), so we must not let a server-driven
     // activeTab sync yank the user off the web pane on reconnect.
     let webActive = false;
-    let webLoaded = false;
     let webUrl = null;
+    let webview = null;          // the visible web tab's iframe
+    const webviews = new Map();  // tab name -> its iframe, created on first select
+
+    function showWebview(btn) {
+      let el = webviews.get(btn.dataset.name);
+      if (!el) {
+        el = webviewTpl.content.firstElementChild.cloneNode(true);
+        el.title = btn.querySelector(".tab-label").textContent;
+        el.src = btn.dataset.web;
+        webframe.appendChild(el);
+        webviews.set(btn.dataset.name, el);
+      }
+      webviews.forEach((v) => v.classList.toggle("hidden", v !== el));
+      webview = el;
+      webUrl = btn.dataset.web;
+      webframe.setAttribute("aria-label", el.title);
+      if (webpop) webpop.href = webUrl;
+    }
 
     function highlightTab(btn) {
       tabs.forEach((t) => t.setAttribute("aria-selected", String(t === btn)));
       if (wakeBtn) wakeBtn.classList.toggle("hidden", btn.dataset.name !== "llm");
     }
     function selectTab(btn) {
-      highlightTab(btn);
       if (btn.dataset.web) {
-        // Web pane: swap the terminal card for the iframe. Load src lazily on
-        // first open so the remote-browser stream doesn't start until used.
+        highlightTab(btn);
+        // Web pane: swap the terminal card for this tab's iframe. Each iframe
+        // is created on first open (so its remote-browser stream doesn't start
+        // until used) and kept alive while hidden.
         webActive = true;
         document.body.classList.add("web-active");
-        webUrl = btn.dataset.web;
-        if (!webLoaded) { webview.src = webUrl; webLoaded = true; }
+        showWebview(btn);
         frame.classList.add("hidden");
         webframe.classList.remove("hidden");
-        return; // no Alt+digit, no term.focus -- this isn't a Zellij tab
+        return; // this isn't a Zellij tab
       }
       webActive = false;
       document.body.classList.remove("web-active");
       webframe.classList.add("hidden");
       frame.classList.remove("hidden");
-      sendInput("\x1b" + btn.dataset.tab); // Alt+<n> = ESC + digit
+      sendInput("\x00" + JSON.stringify({ type: "selectTool", name: btn.dataset.name }));
       term.focus();
       scheduleFit();
     }
@@ -489,7 +550,7 @@
     const webreload = document.getElementById("webreload");
     if (webreload) {
       webreload.addEventListener("click", () => {
-        if (!webUrl) return;
+        if (!webview) return;
         webview.src = webUrl; // same value still triggers a fresh load
         webreload.classList.remove("spinning");
         void webreload.offsetWidth; // reflow so the animation can retrigger
@@ -497,17 +558,17 @@
       });
     }
 
-    // ── keyboard tab switch: Option/Alt+1..5 ────────────────────────────────
+    // ── keyboard tab switch: Option/Alt+1..9 ────────────────────────────────
     // Capture-phase on window so it fires before xterm's own key handler and
     // we can stop the keystroke from reaching the terminal (on macOS Option+
     // digit would otherwise type ¡™£¢∞; preventDefault below suppresses that).
-    // Keyed off physical e.code (Digit1..Digit5) so it's layout-independent.
+    // Keyed off physical e.code (Digit1..Digit9) so it's layout-independent.
     // NOTE: while focus is inside the claude.ai iframe (cross-origin), its
     // keystrokes never reach this listener -- so this switches away from a
     // terminal tab reliably, but not from within the live claude.ai stream.
     window.addEventListener("keydown", (e) => {
       if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
-      const m = /^Digit([1-5])$/.exec(e.code);
+      const m = /^Digit([1-9])$/.exec(e.code);
       if (!m) return;
       const idx = parseInt(m[1], 10) - 1;
       if (idx < 0 || idx >= tabs.length) return;
@@ -577,6 +638,224 @@
     if (fontInc) fontInc.addEventListener("click", () => applyFontSize(fontSize + 1));
   } catch (err) { console.error("[nexus] configure panel setup failed:", err); }
 
+  // ── Recover buttons (configure menu): fix one stuck piece at a time ──────
+  try {
+    const hint = document.getElementById("rec-tab-hint");
+    const current = () => document.querySelector('.tab[aria-selected="true"]');
+    const label = (btn) => btn ? btn.querySelector(".tab-label").textContent : "current tab";
+    document.getElementById("configure").addEventListener("click", () => {
+      if (hint) hint.textContent = label(current());
+    });
+
+    let pill = null, pillTimer = null;
+    function notify(msg, ok) {
+      if (!pill) {
+        pill = document.createElement("div");
+        pill.className = "toast";
+        document.body.appendChild(pill);
+      }
+      pill.textContent = msg;
+      pill.classList.toggle("err", !ok);
+      pill.classList.add("show");
+      clearTimeout(pillTimer);
+      pillTimer = setTimeout(() => pill.classList.remove("show"), 3500);
+    }
+    async function recover(body) {
+      const res = await fetch("/api/recover", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-nexus-recover": "1" },
+        body: JSON.stringify(body),
+      });
+      const out = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+      if (!out.ok) throw new Error(out.error || `HTTP ${res.status}`);
+      return out.result;
+    }
+    const busy = new Set();
+    function wire(id, fn) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener("click", async () => {
+        if (busy.has(id)) return;
+        busy.add(id);
+        // Close the menu so the tab being recovered is visible.
+        document.getElementById("configure-panel").classList.add("hidden");
+        document.getElementById("configure").setAttribute("aria-expanded", "false");
+        el.classList.add("busy");
+        try { await fn(); } catch (err) { notify(`Recover failed: ${err.message}`, false); }
+        finally { busy.delete(id); el.classList.remove("busy"); }
+      });
+    }
+
+    wire("rec-reconnect", () => { forceReconnect(); notify("Reconnecting…", true); });
+    wire("rec-reload", () => location.reload());
+    wire("rec-bridge", async () => {
+      if (!confirm("Restart the nexus web server?\n\nTerminal sessions keep running. Every open device reconnects in a few seconds.")) return;
+      await recover({ action: "bridge" });
+      notify("Bridge restarting — reconnecting…", true);
+    });
+    wire("rec-tab", async () => {
+      const tab = current();
+      if (!tab) return;
+      const name = tab.dataset.name;
+      if (tab.dataset.web) {
+        if (!confirm(`Restart the ${label(tab)} browser?\n\nIts container restarts (~20 s). You stay logged in.`)) return;
+        notify(`Restarting ${label(tab)} browser…`, true);
+        await recover({ action: "browser", name });
+        const reload = document.getElementById("webreload");
+        if (reload) reload.click();
+        notify(`${label(tab)} browser restarted`, true);
+        return;
+      }
+      const warn = name === "claude"
+        ? "This ends the running Claude Code session. Resume it afterwards with: claude --continue"
+        : `Whatever is running in the ${label(tab)} tab is closed and the tab reconnects.`;
+      if (!confirm(`Restart the ${label(tab)} tab?\n\n${warn}`)) return;
+      const result = await recover({ action: "tool", name });
+      notify(`${label(tab)}: ${result}`, true);
+    });
+
+    // ── Maintenance panel ──────────────────────────────────────────────────
+    const maint = document.getElementById("maint");
+    const mBody = document.getElementById("maint-body");
+    const mSub = document.getElementById("maint-sub");
+    const mKill = document.getElementById("maint-kill");
+    const mRefresh = document.getElementById("maint-refresh");
+    const TAB_ORDER = ["Claude Terminal", "Codex Terminal", "OpenCode"];
+    const CHIP = { nexus: ["chip-nexus", "nexus"], attached: ["chip-attached", "in use"],
+      service: ["chip-service", "service"], orphan: ["chip-orphan", "orphaned"] };
+    let lastScan = null;
+
+    const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+    const mem = (kb) => kb >= 1048576 ? (kb / 1048576).toFixed(1) + " GB" : Math.round(kb / 1024) + " MB";
+    function ago(sec) {
+      const d = Math.max(0, Math.round(Date.now() / 1000 - sec));
+      if (d < 3600) return Math.round(d / 60) + " min";
+      if (d < 172800) return Math.round(d / 3600) + " h";
+      return Math.round(d / 86400) + " days";
+    }
+
+    function selected() {
+      return [...mBody.querySelectorAll("input.m-pick:checked")].map((c) => ({ pid: +c.dataset.pid, start: +c.dataset.start }));
+    }
+    function updateKill() {
+      const n = selected().length;
+      mKill.disabled = n === 0;
+      mKill.textContent = n ? `Kill ${n} selected` : "Kill selected";
+    }
+
+    function render(scan) {
+      const ss = scan.sessions;
+      const orphans = ss.filter((x) => x.killable);
+      const reclaim = orphans.reduce((t, x) => t + x.rssKB, 0);
+      const zombies = scan.zombies.reduce((t, z) => t + z.count, 0);
+      mSub.innerHTML = orphans.length
+        ? `<b>${orphans.length} orphaned</b> session${orphans.length > 1 ? "s" : ""} holding ${mem(reclaim)} · ` +
+          `${ss.length - orphans.length} protected · ${zombies} zombie${zombies === 1 ? "" : "s"}`
+        : `No orphans · ${ss.length} session${ss.length === 1 ? "" : "s"}, all protected · ${zombies} zombie${zombies === 1 ? "" : "s"}`;
+      mSub.innerHTML += ` <span class="muted">· scanned ${new Date(scan.scannedAt * 1000).toLocaleTimeString()}</span>`;
+
+      let html = "";
+      for (const tab of TAB_ORDER) {
+        const rows = ss.filter((x) => x.tab === tab)
+          .sort((a, b) => (b.killable - a.killable) || (a.startedAt - b.startedAt));
+        const o = rows.filter((x) => x.killable).length;
+        html += `<section class="maint-section"><h3>${esc(tab)}<span class="count">${rows.length} session${rows.length === 1 ? "" : "s"}${o ? ` · ${o} orphaned` : ""}</span></h3>`;
+        if (!rows.length) { html += `<div class="maint-empty">Nothing running.</div></section>`; continue; }
+        html += `<table class="maint-table sessions"><thead><tr>
+          <th>${o ? `<input type="checkbox" class="m-all" data-tab="${esc(tab)}" title="Select all orphaned">` : ""}</th>
+          <th>Status</th><th>Where</th><th class="num">PID</th><th class="num">Running</th>
+          <th class="num">Memory</th><th class="num">CPU</th><th>Why / command</th></tr></thead><tbody>`;
+        for (const x of rows) {
+          const [cls, label] = CHIP[x.status] || ["chip-attached", x.status];
+          html += `<tr class="${x.killable ? "is-orphan" : ""}">
+            <td>${x.killable ? `<input type="checkbox" class="m-pick" data-tab="${esc(tab)}" data-pid="${x.pid}" data-start="${x.start}">` : ""}</td>
+            <td><span class="chip ${cls}">${label}</span></td>
+            <td>${esc(x.container)}</td>
+            <td class="num">${x.pid}</td>
+            <td class="num">${ago(x.startedAt)}</td>
+            <td class="num">${mem(x.rssKB)}</td>
+            <td class="num">${x.cpuPct}%</td>
+            <td><div>${esc(x.reason)}</div><div class="cmd">${esc(x.cmd)}${x.procs > 1 ? ` <span class="muted">(+${x.procs - 1} child process${x.procs > 2 ? "es" : ""})</span>` : ""}</div></td></tr>`;
+        }
+        html += `</tbody></table></section>`;
+      }
+      html += `<section class="maint-section"><h3>Zombies<span class="count">${zombies} — already dead, use no memory; only their parent can clear them</span></h3>`;
+      if (!scan.zombies.length) html += `<div class="maint-empty">None.</div>`;
+      else {
+        html += `<table class="maint-table"><thead><tr><th>Where</th><th class="num">Count</th><th>Parent</th><th>What they were</th><th>Fix</th></tr></thead><tbody>`;
+        for (const z of scan.zombies) {
+          const what = Object.entries(z.names).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n, c]) => `${esc(n)} ×${c}`).join(", ");
+          const fix = z.parentIsInit
+            ? (z.container === "host" ? "host init will reap them" : `the container's PID 1 never reaps — add <code>init: true</code> to ${esc(z.container)} (needs a recreate)`)
+            : "cleared when the parent exits or reaps them";
+          html += `<tr><td>${esc(z.container)}</td><td class="num">${z.count}</td>
+            <td><span class="cmd">${esc(z.parentCmd)}</span> <span class="muted">pid ${z.parentPid}</span></td>
+            <td class="muted">${what}</td><td class="muted">${fix}</td></tr>`;
+        }
+        html += `</tbody></table>`;
+      }
+      html += `</section>`;
+      mBody.innerHTML = html;
+      mBody.querySelectorAll("input.m-all").forEach((all) => all.addEventListener("change", () => {
+        mBody.querySelectorAll(`input.m-pick[data-tab="${CSS.escape(all.dataset.tab)}"]`).forEach((c) => { c.checked = all.checked; });
+        updateKill();
+      }));
+      mBody.querySelectorAll("input.m-pick").forEach((c) => c.addEventListener("change", updateKill));
+      updateKill();
+    }
+
+    async function scanNow() {
+      mRefresh.classList.add("busy");
+      mSub.textContent = "Scanning… (takes a few seconds)";
+      try {
+        const r = await fetch("/api/maint/scan", { cache: "no-store" });
+        const out = await r.json();
+        if (!out.ok) throw new Error(out.error || `HTTP ${r.status}`);
+        lastScan = out;
+        render(out);
+      } catch (err) {
+        mSub.textContent = `Scan failed: ${err.message}`;
+      } finally { mRefresh.classList.remove("busy"); }
+    }
+    function openMaint() { maint.classList.remove("hidden"); scanNow(); }
+    function closeMaint() { maint.classList.add("hidden"); term.focus(); }
+
+    wire("rec-maint", async () => openMaint());
+    mRefresh.addEventListener("click", scanNow);
+    document.getElementById("maint-close").addEventListener("click", closeMaint);
+    maint.addEventListener("click", (e) => { if (e.target === maint) closeMaint(); });
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !maint.classList.contains("hidden")) { e.stopPropagation(); closeMaint(); }
+    }, true);
+    mKill.addEventListener("click", async () => {
+      const targets = selected();
+      if (!targets.length || !lastScan) return;
+      const rows = lastScan.sessions.filter((x) => targets.some((t) => t.pid === x.pid));
+      const total = rows.reduce((t, x) => t + x.rssKB, 0);
+      const list = rows.map((x) => `• ${x.tool} — ${x.container}, pid ${x.pid}, ${mem(x.rssKB)}, running ${ago(x.startedAt)}`).join("\n");
+      if (!confirm(`Kill ${rows.length} orphaned session${rows.length > 1 ? "s" : ""} (${mem(total)})?\n\n${list}\n\nThe server re-checks each one first and refuses anything that is a nexus tab or still in use.`)) return;
+      mKill.classList.add("busy"); mKill.disabled = true;
+      try {
+        const r = await fetch("/api/maint/kill", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-nexus-recover": "1" },
+          body: JSON.stringify({ targets }),
+        });
+        const out = await r.json();
+        if (!out.ok) throw new Error(out.error || `HTTP ${r.status}`);
+        const done = out.results.filter((x) => x.ok);
+        const refused = out.results.filter((x) => !x.ok);
+        const freed = done.reduce((t, x) => t + (x.freedKB || 0), 0);
+        notify(`Killed ${done.length}, freed ${mem(freed)}` + (refused.length ? ` · ${refused.length} refused: ${refused[0].error}` : ""), refused.length === 0);
+      } catch (err) {
+        notify(`Kill failed: ${err.message}`, false);
+      } finally {
+        mKill.classList.remove("busy");
+        scanNow();
+      }
+    });
+  } catch (err) { console.error("[nexus] recover setup failed:", err); }
+
   // ── cursor style + blink ──────────────────────────────────────────────────
   try {
     const CURSOR_STYLES = ["block", "underline", "bar"];
@@ -610,24 +889,6 @@
     });
     if (cursorBlinkBtn) cursorBlinkBtn.addEventListener("click", () => applyCursorBlink(!cursorBlink));
   } catch (err) { console.error("[nexus] cursor style setup failed:", err); }
-
-  // ── extra keys row (home/end/pgup/pgdn) -- off by default, mostly useful
-  // on mobile where those keys don't exist ─────────────────────────────────
-  try {
-    const extraKeysToggle = document.getElementById("extra-keys-toggle");
-    const auxExtra = document.getElementById("auxbar-extra");
-    let extraKeysOn = localStorage.getItem("nexus-extra-keys") === "true";
-
-    function applyExtraKeys(on) {
-      extraKeysOn = on;
-      if (auxExtra) auxExtra.classList.toggle("hidden", !on);
-      if (extraKeysToggle) extraKeysToggle.setAttribute("aria-checked", String(on));
-      try { localStorage.setItem("nexus-extra-keys", String(on)); } catch (_) {}
-      scheduleFit(); // auxbar height can change, which changes #stage's available height
-    }
-    applyExtraKeys(extraKeysOn);
-    if (extraKeysToggle) extraKeysToggle.addEventListener("click", () => applyExtraKeys(!extraKeysOn));
-  } catch (err) { console.error("[nexus] extra keys setup failed:", err); }
 
   // ── copy on select ─────────────────────────────────────────────────────
   try {
@@ -682,22 +943,6 @@
       });
     }
   } catch (err) { console.error("[nexus] logout button setup failed:", err); }
-
-  // ── aux keys ──────────────────────────────────────────────────────────────
-  const AUX = {
-    esc: "\x1b", tab: "\t",
-    up: "\x1b[A", down: "\x1b[B", right: "\x1b[C", left: "\x1b[D",
-    home: "\x1b[1~", end: "\x1b[4~", pgup: "\x1b[5~", pgdn: "\x1b[6~",
-  };
-  document.querySelectorAll("#auxbar .key").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      const k = btn.dataset.key;
-      if (k === "ctrl") { setCtrl(!ctrlArmed); term.focus(); return; }
-      if (AUX[k]) { sendInput(AUX[k]); if (ctrlArmed) setCtrl(false); }
-      term.focus();
-      e.preventDefault();
-    });
-  });
 
   scheduleFit();
   connect(false);

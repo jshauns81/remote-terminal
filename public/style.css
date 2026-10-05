@@ -18,6 +18,7 @@
   /* — color: surfaces — */
   --ink-900: #05080f;   /* app backdrop base */
   --ink-800: #080d18;   /* terminal canvas */
+  --term-bg: #1a1b26;   /* Tokyo Night background, matches the xterm theme */
   --ink-700: #0c1526;   /* bars */
   --ink-600: #111d33;   /* raised cards / active tab */
 
@@ -85,7 +86,7 @@ html, body {
   /* iOS's soft keyboard shrinks window.visualViewport but does NOT shrink
      100dvh (dvh only accounts for browser chrome show/hide, not the
      keyboard) -- left as-is, the keyboard would simply overlay the bottom
-     of #app, burying #auxbar's ctrl/esc/arrow keys exactly when they're
+     of #app, burying the bottom of the terminal exactly when it's
      most needed (mid-typing). nexus.js measures visualViewport.height on
      load/resize/scroll and writes it here in real px; this wins whenever
      it's set, with the dvh rule above as the pre-JS/no-JS fallback. */
@@ -130,7 +131,7 @@ html, body {
 .brand-name { color: var(--text-hi); }
 
 /* ── tab bar (segmented control) ────────────────────────────────────────── */
-#tabs {
+.tabgroup {
   display: flex;
   align-items: center;
   gap: var(--s1);
@@ -278,6 +279,26 @@ html, body {
   gap: var(--s3);
   min-height: 28px;
 }
+.popover-subtitle { margin-top: var(--s2); padding-top: var(--s3); border-top: 1px solid var(--line); }
+.recover-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+.recover-btn {
+  appearance: none;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: var(--s2) var(--s3);
+  background: var(--ink-900);
+  border: 1px solid var(--line);
+  border-radius: var(--r1);
+  color: var(--text-hi);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.recover-btn:hover { background: var(--ink-600); }
+.recover-btn:active { transform: scale(0.97); }
+.recover-btn:focus-visible { outline: none; box-shadow: var(--glow); }
+.recover-btn.busy { opacity: 0.55; cursor: progress; }
+.recover-name { font-size: 13px; font-weight: 500; }
+.recover-hint { font-size: 11px; color: var(--text-lo); }
 .popover-label { min-width: 100px; font-size: 13px; color: var(--text-mid); }
 .popover-controls { display: flex; align-items: center; gap: var(--s3); }
 
@@ -407,7 +428,7 @@ html, body {
   min-height: 0;
   display: flex;
   justify-content: center;
-  /* horizontal inset matches #topbar/#auxbar's 16px so the card's left/right
+  /* horizontal inset matches #topbar's 16px so the card's left/right
      edges line up with the brand logo and logout/status pills above it --
      #frame is already dead-center within #stage; the visible "off-center"
      read was #stage's own 24px gutter not matching the bars' 16px. */
@@ -418,7 +439,7 @@ html, body {
   flex: 1;
   min-height: 0;
   max-width: var(--term-max);
-  background: var(--ink-800);
+  background: var(--term-bg);
   border: 1px solid var(--line);
   border-radius: var(--r3);
   box-shadow: var(--e2);
@@ -441,12 +462,13 @@ html, body {
   overflow: hidden;
 }
 #webframe.hidden { display: none; }
-#webview {
+.webview {
   position: absolute; inset: 0;
   width: 100%; height: 100%;
   border: 0;
   background: #fff; /* claude.ai is light -- avoid a dark flash before it paints */
 }
+.webview.hidden { display: none; }
 /* Corner controls for the web pane: reload (reconnect the stream) + pop-out. */
 .webctls {
   position: absolute; top: 8px; right: 8px;
@@ -474,7 +496,6 @@ html, body {
 @keyframes webreload-spin { to { transform: rotate(360deg); } }
 /* On the web tab the on-screen key row targets the terminal, which isn't
    visible -- hide it so it can't send stray keys into a hidden pty. */
-body.web-active #auxbar { display: none; }
 
 #term {
   position: absolute; inset: var(--s4);
@@ -547,54 +568,11 @@ body.web-active #auxbar { display: none; }
 }
 @keyframes shimmer { to { background-position: -200% 0; } }
 
-/* ── aux-key strip ──────────────────────────────────────────────────────── */
-#auxbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: var(--s3);
-  padding: var(--s3) var(--s4);
-  padding-bottom: calc(var(--s3) + env(safe-area-inset-bottom));
-  background: rgba(10, 18, 34, 0.65);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-top: 1px solid var(--line);
-}
-.aux-group { display: flex; align-items: center; gap: var(--s2); }
-.aux-group.hidden { display: none; }
-.aux-sep { width: 1px; height: 22px; background: var(--line); }
-.key {
-  appearance: none;
-  min-width: 40px; height: 34px;
-  padding: 0 var(--s3);
-  border: 1px solid var(--line);
-  border-radius: var(--r1);
-  background: var(--ink-600);
-  box-shadow: var(--e1);
-  color: var(--text-mid);
-  font: inherit; font-size: 13px; line-height: 1;
-  cursor: pointer;
-  transition: color 0.12s ease, background 0.12s ease, transform 0.04s ease, box-shadow 0.12s ease;
-}
-.key:hover { color: var(--text-hi); background: #16233c; }
-.key:active { transform: scale(0.96); box-shadow: var(--glow); color: var(--text-hi); }
-.key:focus-visible { outline: none; box-shadow: var(--glow); }
-.aux-arrows .key { min-width: 40px; font-size: 12px; }
-/* sticky ctrl: armed state persists until the next keypress consumes it */
-.key-ctrl[aria-pressed="true"] {
-  color: #06131f;
-  background: var(--accent);
-  border-color: transparent;
-  box-shadow: var(--glow);
-  font-weight: 600;
-}
-
 /* ── upload toast: transient feedback for image paste/drop ──────────────── */
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(76px + env(safe-area-inset-bottom));
+  bottom: calc(24px + env(safe-area-inset-bottom));
   transform: translateX(-50%) translateY(8px);
   z-index: 30;
   max-width: 84vw;
@@ -615,12 +593,15 @@ body.web-active #auxbar { display: none; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.err { border-color: rgba(251, 113, 133, 0.5); color: var(--err); }
 
-/* On touch devices the aux strip is primary: bigger targets, full width. */
-@media (pointer: coarse) {
-  #auxbar { gap: var(--s2); }
-  .key { min-width: 52px; height: 46px; font-size: 15px; }
-  .aux-arrows .key { flex: 1; }
-  .aux-group.aux-arrows { flex: 1; }
+/* Three named tab pills + controls: keep labels on one line, and on
+   narrower desktop windows drop the configure/logout/status text to icons
+   so everything still fits in a single row. */
+.tab-label { white-space: nowrap; }
+@media (max-width: 1400px) {
+  #topbar { gap: var(--s3); }
+  .iconbtn-label, .status .status-label { display: none; }
+  .iconbtn, .status { padding: var(--s2); }
+  .tab { padding-left: var(--s2); padding-right: var(--s2); }
 }
 
 /* Phone layout: tighter header gutters, less stage padding, wrap tabs off. */
@@ -628,7 +609,8 @@ body.web-active #auxbar { display: none; }
   :root { --gutter: var(--s3); }
   #topbar { gap: var(--s3); padding-left: var(--s3); padding-right: var(--s3); }
   .brand-name { display: none; }
-  #tabs { flex: 1; justify-content: space-between; }
+  .tabgroup { justify-content: space-between; }
+
   .tab { padding: var(--s2); font-size: 12px; }
   .status .status-label { display: none; }
   .status { padding: var(--s2); }
@@ -639,3 +621,87 @@ body.web-active #auxbar { display: none; }
   #term { inset: var(--s3); }
   .scroll-track { top: var(--s3); bottom: var(--s3); }
 }
+
+/* ── Maintenance panel ───────────────────────────────────────────────────── */
+.recover-wide { grid-column: 1 / -1; margin-top: var(--s2); }
+.maint {
+  position: fixed; inset: 0; z-index: 40;
+  display: grid; place-items: center;
+  background: rgba(5, 8, 15, 0.6);
+  backdrop-filter: blur(4px);
+  padding: var(--s5, 32px);
+}
+.maint.hidden { display: none; }
+.maint-card {
+  width: min(1180px, 100%); max-height: 100%;
+  display: flex; flex-direction: column;
+  background: var(--ink-700);
+  border: 1px solid var(--line);
+  border-radius: var(--r3);
+  box-shadow: var(--e2);
+  overflow: hidden;
+}
+.maint-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s4);
+  padding: var(--s4) var(--s4) var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+.maint-head h2 { margin: 0; font-size: 16px; font-weight: 600; color: var(--text-hi); }
+.maint-sub { margin: 4px 0 0; font-size: 13px; color: var(--text-mid); }
+.maint-sub b { color: #e0af68; font-weight: 600; }
+.maint-actions { display: flex; gap: var(--s2); }
+.maint-btn {
+  appearance: none; font: inherit; font-size: 13px;
+  padding: 6px 12px; border-radius: var(--r1);
+  background: var(--ink-900); color: var(--text-hi);
+  border: 1px solid var(--line); cursor: pointer;
+}
+.maint-btn:hover:not(:disabled) { background: var(--ink-600); }
+.maint-btn:disabled { opacity: 0.45; cursor: default; }
+.maint-btn.busy { opacity: 0.55; cursor: progress; }
+.maint-danger:not(:disabled) { border-color: rgba(247, 118, 142, 0.55); color: #f7768e; }
+.maint-x { padding: 6px 10px; }
+.maint-legend {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  padding: var(--s2) var(--s4); font-size: 12px; color: var(--text-lo);
+  border-bottom: 1px solid var(--line);
+}
+.maint-legend .chip { margin-left: var(--s2); }
+.maint-legend .chip:first-child { margin-left: 0; }
+.maint-body { overflow: auto; padding: var(--s2) var(--s4) var(--s4); }
+.maint-section h3 {
+  margin: var(--s4) 0 var(--s2); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-lo);
+}
+.maint-section h3 .count { color: var(--text-mid); letter-spacing: 0; text-transform: none; margin-left: 6px; }
+.maint-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.maint-table th {
+  text-align: left; font-weight: 500; font-size: 11px; color: var(--text-lo);
+  padding: 4px 8px; border-bottom: 1px solid var(--line);
+}
+.maint-table td { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text-hi); vertical-align: top; }
+.maint-table tr.is-orphan td { background: rgba(224, 175, 104, 0.05); }
+.maint-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.maint-table .muted { color: var(--text-lo); font-size: 12px; }
+.maint-table .cmd { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; color: var(--text-mid); word-break: break-all; }
+.maint-table input[type=checkbox] { accent-color: #e0af68; width: 15px; height: 15px; }
+.maint-empty { color: var(--text-lo); font-size: 13px; padding: 6px 0; }
+.chip {
+  display: inline-block; padding: 1px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+  border: 1px solid currentColor;
+}
+.chip-nexus { color: #7dcfff; background: rgba(125, 207, 255, 0.1); }
+.chip-attached { color: #9ece6a; background: rgba(158, 206, 106, 0.1); }
+.chip-service { color: #bb9af7; background: rgba(187, 154, 247, 0.1); }
+.chip-orphan { color: #e0af68; background: rgba(224, 175, 104, 0.12); }
+.chip-zombie { color: #a9b1d6; background: rgba(169, 177, 214, 0.08); }
+/* Session tables share one column grid so the sections line up. */
+.maint-table.sessions { table-layout: fixed; }
+.maint-table.sessions th:nth-child(1) { width: 32px; }
+.maint-table.sessions th:nth-child(2) { width: 96px; }
+.maint-table.sessions th:nth-child(3) { width: 120px; }
+.maint-table.sessions th:nth-child(4) { width: 80px; }
+.maint-table.sessions th:nth-child(5) { width: 80px; }
+.maint-table.sessions th:nth-child(6) { width: 80px; }
+.maint-table.sessions th:nth-child(7) { width: 56px; }
