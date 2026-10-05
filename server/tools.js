@@ -20,6 +20,12 @@ function reapTagged(cmd) {
   ].join("\n");
 }
 
+// Every (re)launch -- reconnect, rebuild, Recover -> Restart tab -- picks the
+// last conversation back up. --continue only when this directory has one;
+// otherwise it would exit with "no conversation" and leave a bare shell.
+const resumeClaude = 'if ls ~/.claude/projects/"$(pwd | sed "s#[/.]#-#g")"/*.jsonl >/dev/null 2>&1; ' +
+  'then claude --continue; else claude; fi';
+
 const tools = {
   // A docker exec session keeps running after its client dies, so every
   // nexus reconnect/rebuild used to leave the previous Claude Code running in
@@ -33,7 +39,7 @@ const tools = {
   // 24-bit, so say so.
   claude: { command: "docker", args: ["exec", "-it", "-e", "NEXUS_TOOL=claude",
     "-e", "TERM=xterm-256color", "-e", "COLORTERM=truecolor", "claude-helper", "bash", "-lc",
-    `${reapTagged("claude")}\nclaude; exec bash -l`] },
+    `${reapTagged("claude")}\n${resumeClaude}; exec bash -l`] },
   host: { command: "ssh", args: hostSsh },
   opencode: { command: "ssh", args: [...hostSsh, "opencode"] },
   // Native Codex on the host (/usr/local/bin/codex, state in appdata/codex-native),
