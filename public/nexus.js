@@ -24,7 +24,7 @@
       foreground: "#c0caf5",
       cursor: "#c0caf5",
       cursorAccent: "#1a1b26",
-      selectionBackground: "#3d59a1",
+      selectionBackground: "#364a82",
       selectionForeground: "#c0caf5",
       selectionInactiveBackground: "#2e3c64",
       black: "#15161e", red: "#f7768e", green: "#9ece6a", yellow: "#e0af68",

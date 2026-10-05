@@ -5,9 +5,12 @@
 // Tokyo Night (night variant), in Zellij's 0.43+ component theme format.
 // The old flat-palette format made Zellij 0.44 derive the mouse-selection
 // background from `black`, so selected text turned near-black and invisible.
-// text_selected below is that highlight: Tokyo Night's selection blue
-// (#3d59a1) behind light text. The same colour is used by the xterm theme in
-// nexus.js, Claude Code's custom theme (selectionBg) -- one look in every tab.
+// text_selected below is that highlight: #364a82 behind Tokyo Night's
+// foreground. Zellij draws every selected character in `base`, so the only
+// contrast that matters is base vs background: 5.3:1 (WCAG AA), while the
+// block itself stands 2:1 off the #1a1b26 background so it's clearly visible.
+// (#7aa2f7 was visible but text on it dropped to ~1.6:1; #3d59a1 to 4.1:1.)
+// Same colour in nexus.js's xterm theme and Claude Code's custom theme.
 theme "nexus"
 themes {
     nexus {
@@ -21,7 +24,7 @@ themes {
         }
         text_selected {
             base 192 202 245
-            background 61 89 161
+            background 54 74 130
             emphasis_0 255 158 100
             emphasis_1 125 207 255
             emphasis_2 158 206 106
