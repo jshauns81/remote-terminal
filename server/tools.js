@@ -43,8 +43,13 @@ const tools = {
   host: { command: "ssh", args: hostSsh },
   opencode: { command: "ssh", args: [...hostSsh, "opencode"] },
   // Native Codex on the host (/usr/local/bin/codex, state in appdata/codex-native),
-  // started by the forced-command dispatcher like opencode.
-  codex: { command: "ssh", args: [...hostSsh, "codex"] },
+  // started by the forced-command dispatcher like opencode. -a never: no
+  // approval prompts (that's the whole ask). --sandbox workspace-write, not
+  // --dangerously-bypass-approvals-and-sandbox: commands still run inside
+  // Codex's own sandbox instead of raw on the Unraid host as root -- the
+  // 2026-10-05 emhttpd incident happened at exactly the escalated-permission
+  // step this keeps in place. Revisit only with Shaun's explicit say-so.
+  codex: { command: "ssh", args: [...hostSsh, "codex", "-a", "never", "--sandbox", "workspace-write"] },
   llm: { command: "ssh", args: [...sshOptions, "-i", "/app/ssh-keys/id_ed25519_llm",
     "-o", "UserKnownHostsFile=/tmp/known_hosts_llm", "jshau@192.168.1.176"] },
 };
