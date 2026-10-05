@@ -5,6 +5,9 @@ services:
     restart: unless-stopped
     environment:
       - ZELLIJ_CONFIG_DIR=/app/zellij
+      # The browser terminal (xterm.js) renders 24-bit colour; tell every
+      # Zellij pane so themes aren't rounded down to 256/16 colours.
+      - COLORTERM=truecolor
     volumes:
       # Absolute host path on purpose: this compose file gets invoked via a
       # sibling docker:cli container whose own cwd differs from the real host

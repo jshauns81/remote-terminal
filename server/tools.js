@@ -27,7 +27,12 @@ const tools = {
   // tab's Claude, and each launch first stops the previous tagged one --
   // matched on the claude command itself, so detached jobs started from the
   // tab (which inherit the tag) are never touched.
-  claude: { command: "docker", args: ["exec", "-it", "-e", "NEXUS_TOOL=claude", "claude-helper", "bash", "-lc",
+  // TERM/COLORTERM: docker exec defaults to plain TERM=xterm, which made
+  // Claude Code render in 16 colours (every theme colour rounded to the
+  // nearest basic one -- the near-black selection). The nexus terminal is
+  // 24-bit, so say so.
+  claude: { command: "docker", args: ["exec", "-it", "-e", "NEXUS_TOOL=claude",
+    "-e", "TERM=xterm-256color", "-e", "COLORTERM=truecolor", "claude-helper", "bash", "-lc",
     `${reapTagged("claude")}\nclaude; exec bash -l`] },
   host: { command: "ssh", args: hostSsh },
   opencode: { command: "ssh", args: [...hostSsh, "opencode"] },
