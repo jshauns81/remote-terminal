@@ -19,8 +19,8 @@ function current() {
 
 function launch() {
   if (stopping) return;
-  console.log(`\r\nOpening ${name}…`);
   const t = current();
+  console.log(`\r\n${t.openMessage || `Opening ${name}…`}`);
   child = spawn(t.command, t.args, { stdio: "inherit" });
   child.on("error", (err) => console.error(`${name}: ${err.message}`));
   child.once("close", () => {

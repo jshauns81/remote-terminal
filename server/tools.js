@@ -74,7 +74,8 @@ const tools = {
   // documented layer on top.
   codex: { command: "docker", args: ["exec", "-it", "-e", "NEXUS_TOOL=codex",
     "-e", "TERM=xterm-256color", "-e", "COLORTERM=truecolor", "codex-terminal", "bash", "-lc",
-    "cd /host/mnt/user/developer 2>/dev/null; exec bash -l"] },
+    "cd /host/mnt/user/developer 2>/dev/null; exec bash -l"],
+    openMessage: "Shell in codex-terminal, cwd /mnt/user/developer. cd to a project, then run: codex" },
   llm: { command: "ssh", args: [...sshOptions, "-i", "/app/ssh-keys/id_ed25519_llm",
     "-o", "UserKnownHostsFile=/tmp/known_hosts_llm", "jshau@192.168.1.176"] },
 };
