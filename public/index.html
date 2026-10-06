@@ -32,7 +32,7 @@
       <!-- Tabs grouped by product, one pill each. data-name is the stable id the
            server and Zellij use; only the visible labels are Shaun's names.
            data-web marks a web pane (iframe under /web/<name>/) instead of a
-           Zellij terminal tab. Option+1..7 follows this left-to-right order. -->
+           Zellij terminal tab. Option+1..8 follows this left-to-right order. -->
       <nav id="tabs" class="tabgroup" role="tablist" aria-label="Claude">
         <button class="tab" role="tab" data-name="claude" aria-selected="true">
           <span class="tab-dot"></span><span class="tab-label">Claude Terminal</span>
@@ -47,6 +47,11 @@
         </button>
         <button class="tab" role="tab" data-name="chatgpt" data-web="/web/chatgpt/" aria-selected="false">
           <span class="tab-dot"></span><span class="tab-label">ChatGPT Web</span>
+        </button>
+      </nav>
+      <nav class="tabgroup" role="tablist" aria-label="Google">
+        <button class="tab" role="tab" data-name="antigravity" aria-selected="false">
+          <span class="tab-dot"></span><span class="tab-label">Antigravity Terminal</span>
         </button>
       </nav>
       <nav class="tabgroup" role="tablist" aria-label="Homelab">

@@ -720,7 +720,7 @@
     const mSub = document.getElementById("maint-sub");
     const mKill = document.getElementById("maint-kill");
     const mRefresh = document.getElementById("maint-refresh");
-    const TAB_ORDER = ["Claude Terminal", "Codex Terminal", "OpenCode"];
+    const TAB_ORDER = ["Claude Terminal", "Codex Terminal", "Antigravity Terminal", "OpenCode"];
     const CHIP = { nexus: ["chip-nexus", "nexus"], attached: ["chip-attached", "in use"],
       service: ["chip-service", "service"], orphan: ["chip-orphan", "orphaned"] };
     let lastScan = null;

@@ -31,6 +31,7 @@ const TOOLS = [
   { tool: "claude", tab: "Claude Terminal", match: (c) => /^claude( |$)/.test(c) },
   { tool: "codex", tab: "Codex Terminal", match: (c) => /(^|\/)codex( |$)|@openai\/codex/.test(c) && !/npm /.test(c) },
   { tool: "opencode", tab: "OpenCode", match: (c) => /(^|\/)opencode( |$)/.test(c) },
+  { tool: "antigravity", tab: "Antigravity Terminal", match: (c) => /(^|\/)agy( |$)/.test(c) },
 ];
 // Background services a tool starts on purpose (they outlive sessions by
 // design): always protected.

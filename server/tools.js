@@ -76,6 +76,12 @@ const tools = {
     "-e", "TERM=xterm-256color", "-e", "COLORTERM=truecolor", "codex-terminal", "bash", "-lc",
     "cd /host/mnt/user/developer 2>/dev/null; exec bash -l"],
     openMessage: "Shell in codex-terminal, cwd /mnt/user/developer. cd to a project, then run: codex" },
+  // Same shape as codex. agy's safety rules are its global ~/.gemini/GEMINI.md
+  // (mounted read-only by antigravity-terminal), so they load from any cwd.
+  antigravity: { command: "docker", args: ["exec", "-it", "-e", "NEXUS_TOOL=antigravity",
+    "-e", "TERM=xterm-256color", "-e", "COLORTERM=truecolor", "antigravity-terminal", "bash", "-lc",
+    "cd /host/mnt/user/developer 2>/dev/null; exec bash -l"],
+    openMessage: "Shell in antigravity-terminal, cwd /mnt/user/developer. cd to a project, then run: agy" },
   llm: { command: "ssh", args: [...sshOptions, "-i", "/app/ssh-keys/id_ed25519_llm",
     "-o", "UserKnownHostsFile=/tmp/known_hosts_llm", "jshau@192.168.1.176"] },
 };
