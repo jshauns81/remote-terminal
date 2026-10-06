@@ -60,9 +60,21 @@ const tools = {
   // The Maintenance panel already classifies codex sessions correctly
   // (orphan/attached/service); use it to clear stale codex-terminal
   // sessions instead of guessing a matcher here.
+  //
+  // 2026-10-06: drops into a shell instead of auto-launching codex, so a
+  // session can be targeted at any project -- cd to it, then run `codex`
+  // yourself. AGENTS.md only reliably loads for sessions started at /root
+  // or under it: Codex's own AGENTS.md discovery walks up from cwd only as
+  // far as the nearest project_root_marker (.git by default) and stops
+  // there, confirmed by grepping a session's own rollout log for the
+  // file's exact content when started from a project elsewhere (found:
+  // none). So a session targeted outside /root runs with exactly the
+  // access this container already has -- full host reach, no sandbox, no
+  // approval prompts -- same as /root sessions, just without that extra
+  // documented layer on top.
   codex: { command: "docker", args: ["exec", "-it", "-e", "NEXUS_TOOL=codex",
     "-e", "TERM=xterm-256color", "-e", "COLORTERM=truecolor", "codex-terminal", "bash", "-lc",
-    "exec codex"] },
+    "cd /host/mnt/user/developer 2>/dev/null; exec bash -l"] },
   llm: { command: "ssh", args: [...sshOptions, "-i", "/app/ssh-keys/id_ed25519_llm",
     "-o", "UserKnownHostsFile=/tmp/known_hosts_llm", "jshau@192.168.1.176"] },
 };
