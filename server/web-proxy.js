@@ -1,4 +1,4 @@
-// Reverse proxy for the web tabs (claude.ai / chatgpt remote browsers).
+// Reverse proxy for the web tabs (claude.ai / chatgpt / T3 Code remote browsers).
 //
 // The browsers used to be iframed from their own hostnames, each behind its
 // own login. Both logins (Cloudflare Access, then Authentik) refuse to render
@@ -14,8 +14,11 @@ const TARGET_HOST = process.env.WEB_TARGET_HOST || "192.168.10.2";
 const TARGETS = {
   claudeai: Number(process.env.CLAUDEAI_PORT || 3020),
   chatgpt: Number(process.env.CHATGPT_PORT || 3021),
+  // Chromium showing T3 Code's web UI from the dev VM. T3 hard-codes root
+  // paths (/assets, /ws), so it can't be proxied under /web/ directly.
+  t3: Number(process.env.T3_PORT || 3022),
 };
-const PREFIX = /^\/web\/([a-z]+)(\/.*)?$/;
+const PREFIX = /^\/web\/([a-z0-9]+)(\/.*)?$/;
 const CONNECT_TIMEOUT_MS = 5000;
 // Keepalive probes notice a vanished peer (container restart, host network
 // blip) instead of leaving a dead stream socket pinned open forever.
@@ -42,7 +45,7 @@ function handleRequest(req, res) {
   const t = match(req.url);
   if (!t) return false;
   // /web/claudeai -> /web/claudeai/ so relative asset URLs resolve under it.
-  if (!/^\/web\/[a-z]+\//.test(req.url)) {
+  if (!/^\/web\/[a-z0-9]+\//.test(req.url)) {
     res.writeHead(301, { location: `/web/${t.name}/` });
     res.end();
     return true;

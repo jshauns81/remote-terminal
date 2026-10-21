@@ -7,7 +7,7 @@ const fs = require("fs");
 const { execFile } = require("child_process");
 const { names, reapTagged } = require("./tools");
 
-const BROWSERS = { claudeai: "claude-browser", chatgpt: "chatgpt-browser" };
+const BROWSERS = { claudeai: "claude-browser", chatgpt: "chatgpt-browser", t3: "t3-browser" };
 
 function processes() {
   const out = [];
