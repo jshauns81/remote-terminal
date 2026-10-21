@@ -52,15 +52,18 @@ function handleRequest(req, res) {
     return true;
   }
   if (prootMeta.serve(t.path, res)) return true;
-  const rewrite = req.method === "GET" && prootMeta.isBundle(t.path);
+  const rewrite = req.method === "GET" ? prootMeta.rewriteFor(t.path) : null;
   const headers = { ...req.headers, host: `${TARGET_HOST}:${t.port}` };
   const upstream = http.request({
     host: TARGET_HOST, port: t.port, method: req.method, path: t.path,
     headers: rewrite ? prootMeta.bundleRequestHeaders(headers) : headers,
     timeout: CONNECT_TIMEOUT_MS,
   }, (up) => {
-    if (rewrite && up.statusCode === 200) return prootMeta.sendRewritten(up, res);
-    res.writeHead(up.statusCode, up.headers);
+    if (rewrite && up.statusCode === 200) return prootMeta.sendRewritten(up, res, rewrite);
+    // Selkies sends no Cache-Control; without one browsers reuse stale copies
+    // for days on a heuristic. Make them revalidate (cheap: ETag -> 304).
+    const headers = up.headers["cache-control"] ? up.headers : { ...up.headers, "cache-control": "no-cache" };
+    res.writeHead(up.statusCode, headers);
     up.pipe(res);
   });
   upstream.on("timeout", () => upstream.destroy(new Error("timed out")));
