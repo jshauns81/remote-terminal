@@ -9,6 +9,7 @@
 // websocket URLs from the page path, so it runs fine under a subpath.
 const http = require("http");
 const net = require("net");
+const prootMeta = require("./proot-meta");
 
 const TARGET_HOST = process.env.WEB_TARGET_HOST || "192.168.10.2";
 const TARGETS = {
@@ -50,11 +51,15 @@ function handleRequest(req, res) {
     res.end();
     return true;
   }
+  if (prootMeta.serve(t.path, res)) return true;
+  const rewrite = req.method === "GET" && prootMeta.isBundle(t.path);
+  const headers = { ...req.headers, host: `${TARGET_HOST}:${t.port}` };
   const upstream = http.request({
     host: TARGET_HOST, port: t.port, method: req.method, path: t.path,
-    headers: { ...req.headers, host: `${TARGET_HOST}:${t.port}` },
+    headers: rewrite ? prootMeta.bundleRequestHeaders(headers) : headers,
     timeout: CONNECT_TIMEOUT_MS,
   }, (up) => {
+    if (rewrite && up.statusCode === 200) return prootMeta.sendRewritten(up, res);
     res.writeHead(up.statusCode, up.headers);
     up.pipe(res);
   });
